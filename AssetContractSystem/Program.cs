@@ -7,18 +7,24 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. ربط قاعدة البيانات
-// 1. ربط قاعدة البيانات مع تفعيل إعادة المحاولة التلقائية عند انقطاع الاتصال
+// 1. ربط قاعدة البيانات لتعمل مع MySQL (تدعم Railway محلياً وسحابياً)
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString("DefaultConnection"),
-        sqlServerOptionsAction: sqlOptions =>
+{
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
+                           ?? Environment.GetEnvironmentVariable("MYSQL_URL");
+
+    options.UseMySql(
+        connectionString, 
+        ServerVersion.AutoDetect(connectionString),
+        mySqlOptions =>
         {
-            sqlOptions.EnableRetryOnFailure(
+            mySqlOptions.EnableRetryOnFailure(
                 maxRetryCount: 5,
                 maxRetryDelay: TimeSpan.FromSeconds(30),
                 errorNumbersToAdd: null);
-        }));
+        });
+});
+
 // --- إعداد الـ JWT Authentication ---
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 var secretKey = jwtSettings["SecretKey"];
@@ -75,7 +81,7 @@ using (var scope = app.Services.CreateScope())
     {
         var context = services.GetRequiredService<AppDbContext>();
         
-        // تطبيق أي Migrations معلقة على قاعدة البيانات
+        // تطبيق أي Migrations معلقة على قاعدة بيانات MySQL
         context.Database.Migrate();
 
         // التحقق مما إذا كان المستخدم "admin" موجوداً مسبقاً
@@ -152,4 +158,4 @@ app.Run();
 record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
 {
     public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}   
+}
