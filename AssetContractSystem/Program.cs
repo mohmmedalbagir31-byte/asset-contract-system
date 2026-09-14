@@ -10,8 +10,13 @@ var builder = WebApplication.CreateBuilder(args);
 // 1. ربط قاعدة البيانات لتعمل مع MySQL (تدعم Railway محلياً وسحابياً)
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
-                           ?? Environment.GetEnvironmentVariable("MYSQL_URL");
+    var host = Environment.GetEnvironmentVariable("MYSQLHOST") ?? "localhost";
+    var port = Environment.GetEnvironmentVariable("MYSQLPORT") ?? "3306";
+    var db = Environment.GetEnvironmentVariable("MYSQLDATABASE") ?? "railway";
+    var user = Environment.GetEnvironmentVariable("MYSQLUSER") ?? "root";
+    var pass = Environment.GetEnvironmentVariable("MYSQLPASSWORD") ?? "";
+
+    var connectionString = $"Server={host};Port={port};Database={db};Uid={user};Pwd={pass};";
 
     options.UseMySql(
         connectionString, 
