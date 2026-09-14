@@ -7,7 +7,7 @@ COPY frontend-app/./ ./
 RUN npm run build
 
 # --- المرحلة الثانية: بناء الباك إند .NET ---
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build-backend
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build-backend
 WORKDIR /app
 COPY AssetContractSystem/*.csproj ./AssetContractSystem/
 RUN dotnet restore AssetContractSystem/AssetContractSystem.csproj
@@ -17,7 +17,7 @@ WORKDIR /app/AssetContractSystem
 RUN dotnet publish -c Release -o /out
 
 # --- المرحلة الثالثة: تجميع النسخة النهائية للتشغيل ---
-FROM mcr.microsoft.com/dotnet/aspnet:10.0
+FROM mcr.microsoft.com/dotnet/aspnet:9.0
 WORKDIR /app
 COPY --from=build-backend /out .
 

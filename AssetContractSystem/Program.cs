@@ -81,10 +81,14 @@ using (var scope = app.Services.CreateScope())
     {
         var context = services.GetRequiredService<AppDbContext>();
         
-        // تطبيق أي Migrations معلقة على قاعدة بيانات MySQL
+        // تطبيق الـ Migrations
         context.Database.Migrate();
 
-        // التحقق مما إذا كان المستخدم "admin" موجوداً مسبقاً
+        // طباعة عدد المستخدمين الحاليين للتأكد
+        var usersCount = context.Users.Count();
+        Console.WriteLine($"=== عدد المستخدمين الحاليين في القاعدة: {usersCount} ===");
+
+        // التحقق مما إذا كان المستخدم "admin" موجوداً
         if (!context.Users.Any(u => u.Username == "admin"))
         {
             var adminUser = new User
@@ -98,17 +102,20 @@ using (var scope = app.Services.CreateScope())
             };
 
             context.Users.Add(adminUser);
-            context.SaveChanges();
+            int affectedRows = context.SaveChanges();
+            Console.WriteLine($"=== تم حفظ المستخدم بنجاح! عدد الصفوف المتأثرة: {affectedRows} ===");
+        }
+        else
+        {
+            Console.WriteLine("=== المستخدم 'admin' موجود مسبقاً في قاعدة البيانات ===");
         }
     }
     catch (Exception ex)
     {
         var logger = services.GetRequiredService<ILogger<Program>>();
-        // طباعة تفاصيل الخطأ كاملة لكي تظهر في الـ Logs
         logger.LogError(ex, "حدث خطأ أثناء إنشاء حساب المشرف الافتراضي: {Message}", ex.ToString());
     }
 }
-
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
