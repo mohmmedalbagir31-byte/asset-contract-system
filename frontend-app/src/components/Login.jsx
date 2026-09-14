@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import axios from 'axios';
+import API from '../api';
 
 export default function Login({ onLoginSuccess }) {
   const [username, setUsername] = useState('');
@@ -13,19 +13,20 @@ export default function Login({ onLoginSuccess }) {
     setErrorMsg('');
 
     try {
-      const response = await axios.post('http://localhost:5210/api/auth/login', {
+      // نكتب فقط اسم المسار بقية الرابط!
+      const response = await API.post('/auth/login', {
         username,
         password
       });
 
       const token = response.data.token;
       const fullName = response.data.fullName;
-      const role = response.data.role; // استلام صلاحية المستخدم من الـ Backend
+      const Role = response.data.Role; // استلام صلاحية المستخدم من الـ Backend
 
       // تخزين البيانات في LocalStorage (بما فيها الـ Role)
       localStorage.setItem('token', token);
       localStorage.setItem('fullName', fullName);
-      localStorage.setItem('role', role || 'User'); // حفظ الصلاحية أو افتراضياً User
+      localStorage.setItem('ٌRole', Role || 'User'); // حفظ الصلاحية أو افتراضياً User
 
       // استدعاء دالة التحديث لتوجيه المستخدم للداشبورد
       onLoginSuccess(token, fullName);
