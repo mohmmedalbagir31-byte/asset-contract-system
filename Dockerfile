@@ -1,5 +1,5 @@
 # --- المرحلة الأولى: بناء الفرت إند ---
-FROM node:18 AS build-frontend
+FROM node:20 AS build-frontend
 WORKDIR /app/frontend
 COPY frontend-app/package*.json ./
 RUN npm install
