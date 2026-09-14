@@ -3,7 +3,7 @@ import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-
 import axios from 'axios';
 
 import SectorsPage from './SectorsPage';
-import Statespage from './Statespage';
+import Statespage from './StatesPage';
 import CitiesPage from './CitiesPage';
 import PropertiesPage from './PropertiesPage';
 import UsersPage from './UsersPage';
