@@ -1,0 +1,28 @@
+import { useState } from 'react';
+import Login from './components/Login';
+import Dashboard from './components/Dashboard';
+
+function App() {
+  const [token, setToken] = useState(localStorage.getItem('token') || '');
+  const [userFullName, setUserFullName] = useState(localStorage.getItem('fullName') || '');
+
+  const handleLoginSuccess = (newToken, newFullName) => {
+    setToken(newToken);
+    setUserFullName(newFullName);
+  };
+
+  const handleLogout = () => {
+    localStorage.clear();
+    setToken('');
+    setUserFullName('');
+  };
+
+  // إذا لم يكن مسجلاً للدخول اعرض شاشة Login، وإذا سجل دخول اعرض Dashboard
+  return !token ? (
+    <Login onLoginSuccess={handleLoginSuccess} />
+  ) : (
+    <Dashboard userFullName={userFullName} onLogout={handleLogout} />
+  );
+}
+
+export default App;

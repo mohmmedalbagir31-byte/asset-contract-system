@@ -1,0 +1,403 @@
+import React, { useState, useEffect } from 'react';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+const API_URL = 'http://localhost:5210/api/sector';
+
+export default function SectorsPage() {
+  const navigate = useNavigate(); 
+  const [sectors, setSectors] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  // حالات ترقيم الصفحات (10 قطاعات لكل صفحة)
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 10;
+
+  // حالة النافذة المنبثقة (Modal) لإضافة أو تعديل قطاع
+  const [showModal, setShowModal] = useState(false);
+  const [currentSector, setCurrentSector] = useState({ id: null, name: '', description: '' });
+  const [isEditing, setIsEditing] = useState(false);
+
+  // حالة نافذة تأكيد الحذف الخاصة بالنظام
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [targetId, setTargetId] = useState(null);
+
+  // دالة مساعدة للحصول على التوكن من الـ LocalStorage
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('token'); 
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+  };
+
+  // 1. جلب القطاعات من الـ API مع إرسال التوكن
+  const fetchSectors = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(API_URL, {
+        headers: getAuthHeaders()
+      });
+      
+      if (response.status === 401) {
+        throw new Error('انتهت صلاحية الجلسة أو غير مصرح لك (Unauthorized). يرجى تسجيل الدخول مجدداً.');
+      }
+      if (!response.ok) throw new Error('فشل في جلب البيانات من الخادم');
+      
+      const data = await response.json();
+      setSectors(Array.isArray(data) ? data : []);
+      setError('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSectors();
+  }, []);
+
+  // العودة خطوة للوراء
+  const handleBack = () => {
+    navigate(-1); 
+  };
+
+  // 2. حفظ قطاع جديد أو تعديل قطاع قائم مع إرسال التوكن
+  const handleSaveSector = async (e) => {
+    e.preventDefault();
+    try {
+      const method = isEditing ? 'PUT' : 'POST';
+      const url = isEditing ? `${API_URL}/${currentSector.id}` : API_URL;
+
+      const response = await fetch(url, {
+        method: method,
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          id: currentSector.id || 0,
+          name: currentSector.name,
+          description: currentSector.description || ''
+        }),
+      });
+
+      if (response.status === 401) {
+        throw new Error('غير مصرح لك بالقيام بهذا الإجراء. يرجى تسجيل الدخول.');
+      }
+
+      if (!response.ok) {
+        let errorMsg = 'فشل حفظ البيانات';
+        try {
+          const errorData = await response.json();
+          errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
+        } catch {
+          errorMsg = await response.text();
+        }
+        throw new Error(errorMsg);
+      }
+
+      setShowModal(false);
+      setCurrentSector({ id: null, name: '', description: '' });
+      setIsEditing(false);
+      fetchSectors();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  // 3. فتح نافذة التعديل
+  const handleOpenEdit = (sector) => {
+    setCurrentSector({ id: sector.id, name: sector.name, description: sector.description || '' });
+    setIsEditing(true);
+    setShowModal(true);
+  };
+
+  // 4. تنفيذ الحذف الفعلي مع إرسال التوكن
+  const confirmDelete = async () => {
+    try {
+      setIsLoading(true);
+      let response;
+
+      const headers = getAuthHeaders();
+      delete headers['Content-Type']; 
+
+      if (deleteTarget === 'single') {
+        response = await fetch(`${API_URL}/${targetId}`, { 
+          method: 'DELETE',
+          headers: headers
+        });
+      } else if (deleteTarget === 'all') {
+        response = await fetch(`${API_URL}/deleteAll`, { 
+          method: 'DELETE',
+          headers: headers
+        });
+      }
+
+      if (response.status === 401) {
+        throw new Error('غير مصرح لك بالحذف. يرجى تسجيل الدخول مجدداً.');
+      }
+
+      if (!response.ok) {
+        let errorMsg = 'فشل عملية الحذف';
+        try {
+          const errorData = await response.json();
+          errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
+        } catch {
+          errorMsg = await response.text();
+        }
+        throw new Error(errorMsg);
+      }
+
+      setShowDeleteModal(false);
+      setDeleteTarget(null);
+      setTargetId(null);
+      fetchSectors();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const filteredSectors = Array.isArray(sectors) ? sectors.filter((sector) =>
+    sector.name.toLowerCase().includes(searchTerm.toLowerCase())
+  ) : [];
+
+  // إعادة تعيين الصفحة الحالية إلى 1 عند إدخال نص في البحث
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
+  // حساب القطاعات الخاصة بالصفحة الحالية
+  const indexOfLastRow = currentPage * rowsPerPage;
+  const indexOfFirstRow = indexOfLastRow - rowsPerPage;
+  const currentSectors = filteredSectors.slice(indexOfFirstRow, indexOfLastRow);
+  const totalPages = Math.ceil(filteredSectors.length / rowsPerPage);
+
+  return (
+    <div style={styles.container}>
+      {/* رأس الصفحة: زر الرجوع لشاشة التهيئة + العنوان وأزرار الإجراءات */}
+      <div style={styles.headerRow}>
+        <div style={styles.titleSection}>
+          <button onClick={handleBack} style={styles.backBtn}>
+            ⬅ رجوع 
+          </button>
+          <div>
+            <h2 style={styles.title}>إدارة القطاعات</h2>
+            <p style={styles.subtitle}>عرض وتعديل وإدارة قطاعات النظام المختلفة</p>
+          </div>
+        </div>
+        <div style={styles.headerActions}>
+          <button 
+            onClick={() => {
+              if (sectors.length === 0) {
+                alert('لا توجد قطاعات لحذفها.');
+                return;
+              }
+              setDeleteTarget('all');
+              setShowDeleteModal(true);
+            }} 
+            style={styles.deleteAllBtn}
+            disabled={sectors.length === 0}
+          >
+            🗑️ حذف الكل
+          </button>
+          <button 
+            onClick={() => {
+              setCurrentSector({ id: null, name: '', description: '' });
+              setIsEditing(false);
+              setShowModal(true);
+            }} 
+            style={styles.addBtn}
+          >
+            + إضافة قطاع جديد
+          </button>
+        </div>
+      </div>
+
+      {/* خانة البحث */}
+      <div style={styles.searchContainer}>
+        <input 
+          type="text"
+          placeholder="ابحث باسم القطاع..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          style={styles.searchInput}
+        />
+      </div>
+
+      {/* رسائل الخطأ والتحميل */}
+      {isLoading && <p style={styles.infoText}>جاري التحميل...</p>}
+      {error && <p style={styles.errorText}>{error}</p>}
+
+      {/* جدول عرض القطاعات */}
+      {!isLoading && !error && (
+        <div style={styles.tableCard}>
+          <table style={styles.table}>
+            <thead>
+              <tr style={styles.tableHeaderRow}>
+                <th style={styles.th}>#</th>
+                <th style={styles.th}>اسم القطاع</th>
+                <th style={styles.th}>الوصف</th>
+                <th style={styles.th}>تاريخ الإضافة</th>
+                <th style={styles.th}>الإجراءات</th>
+              </tr>
+            </thead>
+            <tbody>
+              {currentSectors.length > 0 ? (
+                currentSectors.map((sector, index) => (
+                  <tr key={sector.id} style={styles.tableRow}>
+                    <td style={styles.td}>{indexOfFirstRow + index + 1}</td>
+                    <td style={{ ...styles.td, fontWeight: 'bold' }}>{sector.name}</td>
+                    <td style={styles.td}>{sector.description || 'لا يوجد وصف'}</td>
+                    <td style={styles.td}>{sector.createdAt ? new Date(sector.createdAt).toLocaleDateString('ar-SA') : '-'}</td>
+                    <td style={styles.td}>
+                      <button onClick={() => handleOpenEdit(sector)} style={styles.editBtn}>تعديل</button>
+                      <button 
+                        onClick={() => {
+                          setDeleteTarget('single');
+                          setTargetId(sector.id);
+                          setShowDeleteModal(true);
+                        }} 
+                        style={styles.deleteBtn}
+                      >
+                        حذف
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="5" style={styles.noData}>لا توجد قطاعات مطابقة للبحث</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+
+          {/* شريط ترقيم الصفحات */}
+          {totalPages > 1 && (
+            <div style={styles.paginationContainer}>
+              <button 
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} 
+                disabled={currentPage === 1}
+                style={{ ...styles.pageBtn, opacity: currentPage === 1 ? 0.5 : 1 }}
+              >
+                السابق
+              </button>
+
+              <span style={styles.pageIndicator}>
+                الصفحة {currentPage} من {totalPages}
+              </span>
+
+              <button 
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} 
+                disabled={currentPage === totalPages}
+                style={{ ...styles.pageBtn, opacity: currentPage === totalPages ? 0.5 : 1 }}
+              >
+                التالي
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* النافذة المنبثقة لإضافة أو تعديل قطاع */}
+      {showModal && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalContent}>
+            <h3 style={styles.modalTitle}>{isEditing ? 'تعديل القطاع' : 'إضافة قطاع جديد'}</h3>
+            <form onSubmit={handleSaveSector} style={styles.form}>
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>اسم القطاع *</label>
+                <input 
+                  type="text" 
+                  required 
+                  value={currentSector.name}
+                  onChange={(e) => setCurrentSector({ ...currentSector, name: e.target.value })}
+                  style={styles.input}
+                  placeholder="أدخل اسم القطاع"
+                />
+              </div>
+
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>الوصف</label>
+                <textarea 
+                  value={currentSector.description}
+                  onChange={(e) => setCurrentSector({ ...currentSector, description: e.target.value })}
+                  style={{ ...styles.input, height: '80px', resize: 'vertical' }}
+                  placeholder="أدخل وصفاً مختصراً (اختياري)"
+                />
+              </div>
+
+              <div style={styles.modalActions}>
+                <button type="submit" style={styles.saveBtn}>حفظ</button>
+                <button type="button" onClick={() => setShowModal(false)} style={styles.cancelBtn}>إلغاء</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* النافذة المنبثقة الخاصة بتأكيد الحذف */}
+      {showDeleteModal && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalContent}>
+            <h3 style={{ ...styles.modalTitle, color: '#dc2626' }}>تأكيد الحذف</h3>
+            <p style={{ color: '#475569', marginBottom: '20px', fontSize: '15px' }}>
+              {deleteTarget === 'all' 
+                ? 'هل أنت متأكد من رغبتك في حذف جميع القطاعات؟ لا يمكن التراجع عن هذا الإجراء.' 
+                : 'هل أنت متأكد من رغبتك في حذف هذا القطاع؟'}
+            </p>
+            <div style={styles.modalActions}>
+              <button onClick={confirmDelete} style={styles.confirmDeleteBtn}>موافق (حذف)</button>
+              <button onClick={() => setShowDeleteModal(false)} style={styles.cancelBtn}>إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// التنسيقات الخاصة بالصفحة
+const styles = {
+  container: { padding: '20px 40px', maxWidth: '1200px', margin: '0 auto' },
+  headerRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', flexWrap: 'wrap', gap: '15px' },
+  titleSection: { display: 'flex', alignItems: 'center', gap: '15px' },
+  headerActions: { display: 'flex', gap: '10px' },
+  backBtn: { backgroundColor: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', padding: '8px 14px', borderRadius: '6px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' },
+  title: { fontSize: '26px', color: '#0f172a', fontWeight: 'bold', margin: 0 },
+  subtitle: { fontSize: '15px', color: '#64748b', marginTop: '5px' },
+  addBtn: { backgroundColor: '#0ea5e9', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '6px', fontSize: '15px', fontWeight: '600', cursor: 'pointer' },
+  deleteAllBtn: { backgroundColor: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', padding: '10px 18px', borderRadius: '6px', fontSize: '15px', fontWeight: '600', cursor: 'pointer' },
+  searchContainer: { marginBottom: '20px' },
+  searchInput: { width: '100%', maxWidth: '400px', padding: '12px 15px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '15px', outline: 'none' },
+  infoText: { color: '#64748b', fontSize: '16px' },
+  errorText: { color: '#dc2626', fontSize: '16px' },
+  tableCard: { backgroundColor: '#ffffff', borderRadius: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.04)', overflow: 'hidden', border: '1px solid #e2e8f0' },
+  table: { width: '100%', borderCollapse: 'collapse', textAlign: 'right' },
+  tableHeaderRow: { backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' },
+  th: { padding: '15px 20px', fontSize: '15px', fontWeight: '700', color: '#334155' },
+  tableRow: { borderBottom: '1px solid #f1f5f9' },
+  td: { padding: '15px 20px', fontSize: '15px', color: '#1e293b' },
+  noData: { textAlign: 'center', padding: '30px', color: '#64748b', fontSize: '16px' },
+  editBtn: { backgroundColor: '#e0f2fe', color: '#0369a1', border: 'none', padding: '6px 12px', borderRadius: '4px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', marginLeft: '8px' },
+  deleteBtn: { backgroundColor: '#fee2e2', color: '#991b1b', border: 'none', padding: '6px 12px', borderRadius: '4px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' },
+  
+  paginationContainer: { display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '15px', gap: '15px', borderTop: '1px solid #f1f5f9', backgroundColor: '#fff' },
+  pageBtn: { backgroundColor: '#0f172a', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '14px', cursor: 'pointer', fontWeight: '600' },
+  pageIndicator: { fontSize: '15px', fontWeight: '600', color: '#475569' },
+
+  // Modal Styles
+  modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
+  modalContent: { backgroundColor: '#ffffff', padding: '30px', borderRadius: '10px', width: '100%', maxWidth: '450px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' },
+  modalTitle: { fontSize: '20px', fontWeight: 'bold', color: '#0f172a', marginBottom: '20px' },
+  form: { display: 'flex', flexDirection: 'column', gap: '15px' },
+  inputGroup: { display: 'flex', flexDirection: 'column', gap: '5px' },
+  label: { fontSize: '14px', fontWeight: '600', color: '#334155' },
+  input: { padding: '10px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '15px', outline: 'none' },
+  modalActions: { display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' },
+  saveBtn: { backgroundColor: '#0f172a', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '6px', fontSize: '15px', fontWeight: '600', cursor: 'pointer' },
+  confirmDeleteBtn: { backgroundColor: '#dc2626', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '6px', fontSize: '15px', fontWeight: '600', cursor: 'pointer' },
+  cancelBtn: { backgroundColor: '#e2e8f0', color: '#334155', border: 'none', padding: '10px 20px', borderRadius: '6px', fontSize: '15px', fontWeight: '600', cursor: 'pointer' }
+};

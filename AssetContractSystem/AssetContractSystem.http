@@ -1,0 +1,6 @@
+@AssetContractSystem_HostAddress = http://localhost:5210
+
+GET {{AssetContractSystem_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
