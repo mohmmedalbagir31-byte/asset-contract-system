@@ -21,12 +21,12 @@ export default function Login({ onLoginSuccess }) {
 
       const token = response.data.token;
       const fullName = response.data.fullName;
-      const Role = response.data.Role; // استلام صلاحية المستخدم من الـ Backend
+      const role = response.data.role; // استلام الصلاحية بحرف صغير كما يرسلها الباك إند
 
-      // تخزين البيانات في LocalStorage (بما فيها الـ Role)
+      // تخزين البيانات في LocalStorage بشكل نظيف
       localStorage.setItem('token', token);
       localStorage.setItem('fullName', fullName);
-      localStorage.setItem('ٌRole', Role || 'User'); // حفظ الصلاحية أو افتراضياً User
+      localStorage.setItem('Role', role || 'User'); // حفظ القيمة الصحيحة أو افتراضياً User
 
       // استدعاء دالة التحديث لتوجيه المستخدم للداشبورد
       onLoginSuccess(token, fullName);

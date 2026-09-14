@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import API from '../api';
 const API_URL = 'http://localhost:5210/api/city';
-const STATES_API_URL = 'http://localhost:5210/api/state';
+const response = await API.get('/state');
 
 export default function CitiesPage() {
   const navigate = useNavigate();
