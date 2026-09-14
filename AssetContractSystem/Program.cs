@@ -90,7 +90,8 @@ using (var scope = app.Services.CreateScope())
     catch (Exception ex)
     {
         var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "حدث خطأ أثناء إنشاء حساب المشرف الافتراضي.");
+        // طباعة تفاصيل الخطأ كاملة لكي تظهر في الـ Logs
+        logger.LogError(ex, "حدث خطأ أثناء إنشاء حساب المشرف الافتراضي: {Message}", ex.ToString());
     }
 }
 
@@ -143,4 +144,4 @@ app.Run();
 record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
 {
     public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
+}   
