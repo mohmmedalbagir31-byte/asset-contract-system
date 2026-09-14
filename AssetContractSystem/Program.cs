@@ -1,5 +1,6 @@
 using System.Text;
 using AssetContractSystem.Data;
+using AssetContractSystem.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -50,13 +51,48 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:5173", "http://localhost:5210", "https://localhost:7150") // أضفنا منافذ السيرفر المحلي أيضاً للاحتياط
+        policy.WithOrigins("http://localhost:5173", "http://localhost:5210", "https://localhost:7150")
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
 });
 
 var app = builder.Build();
+
+// --- تهيئة قاعدة البيانات وإنشاء حساب المشرف الافتراضي تلقائياً ---
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    try
+    {
+        var context = services.GetRequiredService<AppDbContext>();
+        
+        // تطبيق أي Migrations معلقة على قاعدة البيانات
+        context.Database.Migrate();
+
+        // التحقق مما إذا كان المستخدم "admin" موجوداً مسبقاً
+        if (!context.Users.Any(u => u.Username == "admin"))
+        {
+            var adminUser = new User
+            {
+                Username = "admin",
+                FullName = "مدير النظام",
+                PasswordHash = "123456",
+                Role = "Admin",
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            context.Users.Add(adminUser);
+            context.SaveChanges();
+        }
+    }
+    catch (Exception ex)
+    {
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "حدث خطأ أثناء إنشاء حساب المشرف الافتراضي.");
+    }
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -72,7 +108,7 @@ app.UseStaticFiles();
 // تفعيل سياسة الـ CORS
 app.UseCors("AllowFrontend");
 
-// --- 4. تفعيل المصادقة والصلاحيات (يجب أن تكون قبل MapControllers) ---
+// --- 4. تفعيل المصادقة والصلاحيات ---
 app.UseAuthentication();
 app.UseAuthorization();
 
