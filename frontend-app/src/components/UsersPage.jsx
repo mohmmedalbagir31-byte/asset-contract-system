@@ -26,8 +26,6 @@ export default function UsersPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [targetId, setTargetId] = useState(null);
 
-  // تم حذف getAuthHeaders لأن ملف api.js يضيف التوكن تلقائياً
-
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
@@ -50,6 +48,7 @@ export default function UsersPage() {
   useEffect(() => {
     fetchUsers();
   }, []);
+
   // إعادة الصفحة إلى رقم 1 تلقائياً عند البحث
   useEffect(() => {
     setCurrentPage(1);
@@ -82,38 +81,6 @@ export default function UsersPage() {
     } catch (err) {
       const errorMsg = err.response?.data?.message || err.response?.data?.title || err.message || 'فشل حفظ البيانات';
       alert(errorMsg);
-    }
-  };
-
-  const handleOpenEdit = (userItem) => {
-    setCurrentUser({ 
-      id: userItem?.id || null, 
-      username: userItem?.username || '', 
-      fullName: userItem?.fullName || '', 
-      email: userItem?.email || '', 
-      role: userItem?.role || 'User', 
-      isActive: userItem?.isActive ?? true, 
-      passwordHash: '' 
-    });
-    setIsEditing(true);
-    setShowModal(true);
-  };
-
-  const confirmDelete = async () => {
-    try {
-      setIsLoading(true);
-      
-      // استخدام API.delete مع المسار المركزي مباشرة
-      await API.delete(`/user/${targetId}`);
-
-      setShowDeleteModal(false);
-      setTargetId(null);
-      fetchUsers();
-    } catch (err) {
-      const errorMsg = err.response?.data?.message || err.message || 'فشل حذف المستخدم';
-      alert(errorMsg);
-    } finally {
-      setIsLoading(false);
     }
   };
 
