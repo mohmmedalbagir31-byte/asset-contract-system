@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-
-const API_URL = 'http://localhost:5210/api/user';
+import API from '../api'; // تم استيراد ملف الـ API المركزي
 
 export default function UsersPage() {
   const [users, setUsers] = useState([]);
@@ -27,25 +26,22 @@ export default function UsersPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [targetId, setTargetId] = useState(null);
 
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
-    return {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    };
-  };
+  // تم حذف getAuthHeaders لأن ملف api.js يضيف التوكن تلقائياً
 
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(API_URL, { headers: getAuthHeaders() });
-      if (response.status === 401) throw new Error('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
-      if (!response.ok) throw new Error('فشل في جلب بيانات المستخدمين');
-      const data = await response.json();
-      setUsers(Array.isArray(data) ? data : []);
+      // استخدام API.get مع المسار النسبي فقط
+      const response = await API.get('/user');
+      
+      setUsers(Array.isArray(response.data) ? response.data : []);
       setError('');
     } catch (err) {
-      setError(err.message || 'حدث خطأ غير معروف');
+      if (err.response && err.response.status === 401) {
+        setError('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
+      } else {
+        setError(err.message || 'فشل في جلب بيانات المستخدمين');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -54,7 +50,6 @@ export default function UsersPage() {
   useEffect(() => {
     fetchUsers();
   }, []);
-
   // إعادة الصفحة إلى رقم 1 تلقائياً عند البحث
   useEffect(() => {
     setCurrentPage(1);
