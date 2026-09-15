@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import API from '../api';
-const API_URL = 'http://localhost:5210/api/city';
-const response = await API.get('/state');
+import API from '../api'; // استيراد ملف الـ API المركزي
 
 export default function CitiesPage() {
   const navigate = useNavigate();
@@ -24,36 +22,27 @@ export default function CitiesPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [targetId, setTargetId] = useState(null);
 
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
-    return {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    };
-  };
+  // تم حذف getAuthHeaders لأن ملف api.js يتولى إضافة التوكن تلقائياً
 
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const headers = getAuthHeaders();
-      
-      // جلب المدن
-      const citiesRes = await fetch(API_URL, { headers });
-      if (citiesRes.status === 401) throw new Error('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
-      if (!citiesRes.ok) throw new Error('فشل في جلب بيانات المدن');
-      const citiesData = await citiesRes.json();
-      setCities(Array.isArray(citiesData) ? citiesData : []);
+      // جلب المدن والولايات بالتوازي باستخدام ملف الـ API المركزي
+      const [citiesRes, statesRes] = await Promise.all([
+        API.get('/city'),
+        API.get('/state').catch(() => ({ data: [] })) // حماية في حال فشل جلب الولايات
+      ]);
 
-      // جلب الولايات
-      const statesRes = await fetch(STATES_API_URL, { headers });
-      if (statesRes.ok) {
-        const statesData = await statesRes.json();
-        setStates(Array.isArray(statesData) ? statesData : []);
-      }
+      setCities(Array.isArray(citiesRes.data) ? citiesRes.data : []);
+      setStates(Array.isArray(statesRes.data) ? statesRes.data : []);
 
       setError('');
     } catch (err) {
-      setError(err.message || 'حدث خطأ غير معروف');
+      if (err.response && err.response.status === 401) {
+        setError('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
+      } else {
+        setError(err.message || 'فشل في جلب بيانات المدن');
+      }
     } finally {
       setIsLoading(false);
     }

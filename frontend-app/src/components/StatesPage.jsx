@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-
-const API_URL = 'http://localhost:5210/api/state';
-const SECTORS_API_URL = 'http://localhost:5210/api/sector';
+import API from '../api'; // استيراد ملف الـ API المركزي
 
 export default function StatesPage() {
   const navigate = useNavigate(); 
@@ -24,37 +22,27 @@ export default function StatesPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [targetId, setTargetId] = useState(null);
 
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
-    return {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    };
-  };
+  // تم حذف getAuthHeaders لأن ملف api.js يتولى الأمر تلقائياً
 
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const headers = getAuthHeaders();
+      // جلب الولايات والقطاعات بالتوازي باستخدام API.get
+      const [statesRes, sectorsRes] = await Promise.all([
+        API.get('/state'),
+        API.get('/sector').catch(() => ({ data: [] })) // حماية في حال فشل جلب القطاعات
+      ]);
       
-      // جلب الولايات
-      const statesRes = await fetch(API_URL, { headers });
-      if (statesRes.status === 401) throw new Error('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
-      if (!statesRes.ok) throw new Error('فشل في جلب بيانات الولايات');
+      setStates(Array.isArray(statesRes.data) ? statesRes.data : []);
+      setSectors(Array.isArray(sectorsRes.data) ? sectorsRes.data : []);
       
-      const statesData = await statesRes.json();
-      setStates(Array.isArray(statesData) ? statesData : []);
-
-      // جلب القطاعات للقائمة المنسدلة
-      const sectorsRes = await fetch(SECTORS_API_URL, { headers });
-      if (sectorsRes.ok) {
-        const sectorsData = await sectorsRes.json();
-        setSectors(Array.isArray(sectorsData) ? sectorsData : []);
-      }
-
       setError('');
     } catch (err) {
-      setError(err.message);
+      if (err.response && err.response.status === 401) {
+        setError('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
+      } else {
+        setError(err.message || 'فشل في جلب البيانات');
+      }
     } finally {
       setIsLoading(false);
     }

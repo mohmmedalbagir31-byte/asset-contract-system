@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-const API_URL = 'http://localhost:5210/api/sector';
+import API from '../api'; // استيراد ملف الـ API المركزي
 
 export default function SectorsPage() {
   const navigate = useNavigate(); 
@@ -23,33 +23,22 @@ export default function SectorsPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [targetId, setTargetId] = useState(null);
 
-  // دالة مساعدة للحصول على التوكن من الـ LocalStorage
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('token'); 
-    return {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    };
-  };
+  // تم حذف getAuthHeaders لأن ملف api.js يقوم بإرفاق التوكن تلقائياً
 
-  // 1. جلب القطاعات من الـ API مع إرسال التوكن
+  // 1. جلب القطاعات باستخدام ملف الـ API المركزي
   const fetchSectors = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(API_URL, {
-        headers: getAuthHeaders()
-      });
+      const response = await API.get('/sector');
       
-      if (response.status === 401) {
-        throw new Error('انتهت صلاحية الجلسة أو غير مصرح لك (Unauthorized). يرجى تسجيل الدخول مجدداً.');
-      }
-      if (!response.ok) throw new Error('فشل في جلب البيانات من الخادم');
-      
-      const data = await response.json();
-      setSectors(Array.isArray(data) ? data : []);
+      setSectors(Array.isArray(response.data) ? response.data : []);
       setError('');
     } catch (err) {
-      setError(err.message);
+      if (err.response && err.response.status === 401) {
+        setError('انتهت صلاحية الجلسة أو غير مصرح لك (Unauthorized). يرجى تسجيل الدخول مجدداً.');
+      } else {
+        setError(err.message || 'فشل في جلب البيانات من الخادم');
+      }
     } finally {
       setIsLoading(false);
     }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import axios from 'axios';
+import API from '../api'; // استيراد ملف الـ API المركزي
 
 export default function Reports() {
   const navigate = useNavigate();
@@ -42,10 +42,8 @@ export default function Reports() {
   const fetchReportStats = async () => {
     try {
       setLoadingStats(true);
-      const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:5210/api/reports/stats', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      // استخدام API.get مع ملف الـ API المركزي وتلقائية الـ Interceptors للـ Token
+      const response = await API.get('/reports/stats');
       setStats(response.data);
     } catch (error) {
       console.error('خطأ في جلب الإحصائيات:', error);
@@ -57,10 +55,8 @@ export default function Reports() {
   const fetchReportData = async () => {
     try {
       setLoadingData(true);
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`http://localhost:5210/api/reports/data?type=${reportType}&status=${filterStatus}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      // استخدام API.get مع المعلمات (Query Parameters)
+      const response = await API.get(`/reports/data?type=${reportType}&status=${filterStatus}`);
       setReportData(response.data);
     } catch (error) {
       console.error('خطأ في جلب بيانات التقرير:', error);
@@ -69,7 +65,6 @@ export default function Reports() {
       setLoadingData(false);
     }
   };
-
   // الحصول على اسم التقرير بالعربية للطباعة (تم تصحيح هيكل الـ switch)
   const getReportTitleName = () => {
     switch (reportType) {

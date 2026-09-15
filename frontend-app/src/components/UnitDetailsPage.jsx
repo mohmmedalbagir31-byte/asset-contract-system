@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-
-const UNITS_API = 'http://localhost:5210/api/propertyunit';
+import API from '../api'; // استيراد ملف الـ API المركزي
 
 export default function UnitDetailsPage() {
   const { id } = useParams();
@@ -15,31 +14,22 @@ export default function UnitDetailsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 10;
 
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
-    return {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    };
-  };
+  // تم حذف getAuthHeaders لأن ملف api.js يضيف التوكن تلقائياً
 
   const fetchUnitData = async () => {
     setIsLoading(true);
     try {
-      const headers = getAuthHeaders();
-      const response = await fetch(`${UNITS_API}/${id}`, { headers });
+      // استخدام API.get مع دمج الـ id بشكل مباشر ونظيف
+      const response = await API.get(`/propertyunit/${id}`);
 
-      if (response.status === 401) {
-        throw new Error('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
-      }
-
-      if (!response.ok) throw new Error('فشل في جلب بيانات الوحدة');
-
-      const data = await response.json();
-      setUnit(data);
+      setUnit(response.data);
       setError('');
     } catch (err) {
-      setError(err.message || 'حدث خطأ غير معروف');
+      if (err.response && err.response.status === 401) {
+        setError('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
+      } else {
+        setError(err.message || 'فشل في جلب بيانات الوحدة');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -50,7 +40,6 @@ export default function UnitDetailsPage() {
       fetchUnitData();
     }
   }, [id]);
-
   const contracts = unit?.contracts || [];
   const totalContracts = contracts.length;
   const activeContracts = contracts.filter(c => c.status === 'ساري').length;
