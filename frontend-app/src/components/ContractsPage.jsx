@@ -1,11 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import axios from 'axios';
-
-const API_URL = 'http://localhost:5210/api/contract';
-const INVESTORS_API_URL = 'http://localhost:5210/api/investor';
-const UNITS_API_URL = 'http://localhost:5210/api/propertyunit';
-const CITIES_API_URL = 'http://localhost:5210/api/city';
+import API from '../api'; // استيراد ملف الـ API المركزي
 
 export default function ContractsPage() {
   const navigate = useNavigate();
@@ -83,23 +78,14 @@ export default function ContractsPage() {
     createdBy: localStorage.getItem('username') || 'مسؤول النظام'
   });
 
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
-    return {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    };
-  };
-
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const headers = getAuthHeaders();
       const [contractsRes, investorsRes, unitsRes, citiesRes] = await Promise.all([
-        axios.get(API_URL, { headers }),
-        axios.get(INVESTORS_API_URL, { headers }).catch(() => ({ data: [] })),
-        axios.get(UNITS_API_URL, { headers }).catch(() => ({ data: [] })),
-        axios.get(CITIES_API_URL, { headers }).catch(() => ({ data: [] }))
+        API.get('/contract'),
+        API.get('/investor').catch(() => ({ data: [] })),
+        API.get('/propertyunit').catch(() => ({ data: [] })),
+        API.get('/city').catch(() => ({ data: [] }))
       ]);
 
       const contractsData = Array.isArray(contractsRes.data) ? contractsRes.data : [];
@@ -111,7 +97,11 @@ export default function ContractsPage() {
       checkExpiringContracts(contractsData);
       setError('');
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'فشل في جلب بيانات العقود');
+      if (err.response && err.response.status === 401) {
+        setError('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
+      } else {
+        setError(err.response?.data?.message || err.message || 'فشل في جلب بيانات العقود');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -191,7 +181,6 @@ export default function ContractsPage() {
   const handleSaveContract = async (e) => {
     e.preventDefault();
     try {
-      const headers = getAuthHeaders();
       const payload = {
         contractNumber: currentContract.contractNumber,
         contractType: currentContract.contractType,
@@ -211,9 +200,9 @@ export default function ContractsPage() {
       };
 
       if (isEditing) {
-        await axios.put(`${API_URL}/${currentContract.id}`, { ...payload, id: currentContract.id }, { headers });
+        await API.put(`/contract/${currentContract.id}`, { ...payload, id: currentContract.id });
       } else {
-        await axios.post(API_URL, payload, { headers });
+        await API.post('/contract', payload);
       }
 
       setShowModal(false);
@@ -235,9 +224,9 @@ export default function ContractsPage() {
   const getPaymentStatus = (c) => {
     const total = getTotalContractValue(c);
     const paid = getTotalPaid(c);
-    if (paid >= total && total > 0) return { text: "مدفوع بالكامل", style: styles.badgePaid };
-    if (paid > 0) return { text: "مدفوع جزئياً", style: styles.badgePartial };
-    return { text: "لم يتم السداد", style: styles.badgeUnpaid };
+    if (paid >= total && total > 0) return { text: "مدفوع بالكامل", style: { color: 'green' } };
+    if (paid > 0) return { text: "مدفوع جزئياً", style: { color: 'orange' } };
+    return { text: "لم يتم السداد", style: { color: 'red' } };
   };
 
   const totalContractsCount = contracts.length;
@@ -344,6 +333,7 @@ export default function ContractsPage() {
     if (isEditing && Number(u.id) === Number(currentContract.propertyUnitId)) return true;
     return false;
   });
+
 
   return (
     <div style={styles.pageWrapper}>

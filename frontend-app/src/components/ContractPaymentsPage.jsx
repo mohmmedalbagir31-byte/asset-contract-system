@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
-
-const API_URL = 'http://localhost:5210/api/contractpayment';
+import API from '../api'; // استيراد ملف الـ API المركزي
 
 export default function ContractPaymentsPage() {
   const { id } = useParams();
@@ -57,23 +55,19 @@ export default function ContractPaymentsPage() {
     createdBy: localStorage.getItem('username') || 'مسؤول النظام'
   });
 
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
-    return {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    };
-  };
-
   const fetchFinancialSummary = async () => {
     setIsLoading(true);
     try {
-      const headers = getAuthHeaders();
-      const response = await axios.get(`${API_URL}/contract/${id}`, { headers });
+      // استخدام ملف الـ API المركزي بدلاً من axios المباشر
+      const response = await API.get(`/contractpayment/contract/${id}`);
       setFinancialData(response.data);
       setError('');
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'فشل في جلب البيانات المالية للعقد');
+      if (err.response && err.response.status === 401) {
+        setError('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
+      } else {
+        setError(err.response?.data?.message || err.message || 'فشل في جلب البيانات المالية للعقد');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -120,7 +114,6 @@ export default function ContractPaymentsPage() {
   const handleSavePayment = async (e) => {
     e.preventDefault();
     try {
-      const headers = getAuthHeaders();
       const payload = {
         contractId: Number(id),
         amountPaid: Number(currentPayment.amountPaid),
@@ -133,9 +126,9 @@ export default function ContractPaymentsPage() {
       };
 
       if (isEditing) {
-        await axios.put(`${API_URL}/${currentPayment.id}`, { ...payload, id: currentPayment.id }, { headers });
+        await API.put(`/contractpayment/${currentPayment.id}`, { ...payload, id: currentPayment.id });
       } else {
-        await axios.post(API_URL, payload, { headers });
+        await API.post('/contractpayment', payload);
       }
 
       setShowModal(false);
@@ -149,8 +142,7 @@ export default function ContractPaymentsPage() {
   const handleDeletePayment = async (paymentId) => {
     if (!window.confirm('هل أنت متأكد من حذف هذه الدفعة؟')) return;
     try {
-      const headers = getAuthHeaders();
-      await axios.delete(`${API_URL}/${paymentId}`, { headers });
+      await API.delete(`/contractpayment/${paymentId}`);
       fetchFinancialSummary();
     } catch (err) {
       alert('فشل في حذف الدفعة');
@@ -176,6 +168,7 @@ export default function ContractPaymentsPage() {
   const currentPayments = paymentsList.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil(paymentsList.length / itemsPerPage);
 
+  
   return (
     <div style={styles.pageWrapper}>
       
