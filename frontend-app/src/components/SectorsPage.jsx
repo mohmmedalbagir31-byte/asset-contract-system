@@ -1,45 +1,41 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import API from '../api'; // استيراد ملف الـ API المركزي
 
-export default function StatesPage() {
+export default function SectorsPage() {
   const navigate = useNavigate(); 
-  const [states, setStates] = useState([]);
   const [sectors, setSectors] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // حالات ترقيم الصفحات (10 ولايات لكل صفحة كحد أقصى)
+  // حالات ترقيم الصفحات (10 قطاعات لكل صفحة)
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 10;
 
+  // حالة النافذة المنبثقة (Modal) لإضافة أو تعديل قطاع
   const [showModal, setShowModal] = useState(false);
-  const [currentState, setCurrentState] = useState({ id: null, name: '', sectorId: '' });
+  const [currentSector, setCurrentSector] = useState({ id: null, name: '', description: '' });
   const [isEditing, setIsEditing] = useState(false);
 
+  // حالة نافذة تأكيد الحذف الخاصة بالنظام
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [targetId, setTargetId] = useState(null);
 
-  const fetchData = async () => {
+  // 1. جلب القطاعات باستخدام ملف الـ API المركزي
+  const fetchSectors = async () => {
     setIsLoading(true);
     try {
-      // جلب الولايات والقطاعات بالتوازي باستخدام API.get المركزي
-      const [statesRes, sectorsRes] = await Promise.all([
-        API.get('/state'),
-        API.get('/sector').catch(() => ({ data: [] })) // حماية في حال فشل جلب القطاعات
-      ]);
+      const response = await API.get('/sector');
       
-      setStates(Array.isArray(statesRes.data) ? statesRes.data : []);
-      setSectors(Array.isArray(sectorsRes.data) ? sectorsRes.data : []);
-      
+      setSectors(Array.isArray(response.data) ? response.data : []);
       setError('');
     } catch (err) {
       if (err.response && err.response.status === 401) {
-        setError('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
+        setError('انتهت صلاحية الجلسة أو غير مصرح لك (Unauthorized). يرجى تسجيل الدخول مجدداً.');
       } else {
-        setError(err.message || 'فشل في جلب البيانات');
+        setError(err.message || 'فشل في جلب البيانات من الخادم');
       }
     } finally {
       setIsLoading(false);
@@ -47,69 +43,62 @@ export default function StatesPage() {
   };
 
   useEffect(() => {
-    fetchData();
+    fetchSectors();
   }, []);
 
+  // العودة خطوة للوراء
   const handleBack = () => {
-    navigate(-1);
+    navigate(-1); 
   };
 
-  const handleSaveState = async (e) => {
+  // 2. حفظ قطاع جديد أو تعديل قطاع قائم عبر الـ API المركزي
+  const handleSaveSector = async (e) => {
     e.preventDefault();
     try {
-      if (!currentState.sectorId) {
-        alert('الرجاء اختيار القطاع الذي تتبع له الولاية.');
-        return;
-      }
-
       const payload = {
-        id: currentState.id || 0,
-        name: currentState.name,
-        sectorId: parseInt(currentState.sectorId)
+        id: currentSector.id || 0,
+        name: currentSector.name,
+        description: currentSector.description || ''
       };
 
-      // استخدام الـ API المركزي بدلاً من fetch والـ URL المحلي
       if (isEditing) {
-        await API.put(`/state/${currentState.id}`, payload);
+        await API.put(`/sector/${currentSector.id}`, payload);
       } else {
-        await API.post('/state', payload);
+        await API.post('/sector', payload);
       }
 
       setShowModal(false);
-      setCurrentState({ id: null, name: '', sectorId: '' });
+      setCurrentSector({ id: null, name: '', description: '' });
       setIsEditing(false);
-      fetchData();
+      fetchSectors();
     } catch (err) {
       const errorMsg = err.response?.data?.message || err.response?.data?.title || err.message || 'فشل حفظ البيانات';
       alert(errorMsg);
     }
   };
 
-  const handleOpenEdit = (stateItem) => {
-    setCurrentState({ 
-      id: stateItem.id, 
-      name: stateItem.name, 
-      sectorId: stateItem.sectorId || (stateItem.sector ? stateItem.sector.id : '')
-    });
+  // 3. فتح نافذة التعديل
+  const handleOpenEdit = (sector) => {
+    setCurrentSector({ id: sector.id, name: sector.name, description: sector.description || '' });
     setIsEditing(true);
     setShowModal(true);
   };
 
+  // 4. تنفيذ الحذف الفعلي باستخدام الـ API المركزي
   const confirmDelete = async () => {
     try {
       setIsLoading(true);
 
-      // استخدام الـ API المركزي المباشر لعمليات الحذف (مفرد أو جماعي)
       if (deleteTarget === 'single') {
-        await API.delete(`/state/${targetId}`);
+        await API.delete(`/sector/${targetId}`);
       } else if (deleteTarget === 'all') {
-        await API.delete('/state/deleteAll');
+        await API.delete('/sector/deleteAll');
       }
 
       setShowDeleteModal(false);
       setDeleteTarget(null);
       setTargetId(null);
-      fetchData();
+      fetchSectors();
     } catch (err) {
       const errorMsg = err.response?.data?.message || err.message || 'فشل عملية الحذف';
       alert(errorMsg);
@@ -118,15 +107,11 @@ export default function StatesPage() {
     }
   };
 
-  // فلترة الولايات بناءً على البحث
-  const filteredStates = Array.isArray(states) ? states.filter((st) => {
-    const nameMatch = st.name ? st.name.toLowerCase().includes(searchTerm.toLowerCase()) : false;
-    const sectorName = st.sectorName || (st.sector ? st.sector.name : '');
-    const sectorMatch = sectorName ? sectorName.toLowerCase().includes(searchTerm.toLowerCase()) : false;
-    return nameMatch || sectorMatch;
-  }) : [];
+  const filteredSectors = Array.isArray(sectors) ? sectors.filter((sector) =>
+    sector.name.toLowerCase().includes(searchTerm.toLowerCase())
+  ) : [];
 
-  // إعادة تعيين الصفحة الحالية إلى 1 عند البحث
+  // إعادة تعيين الصفحة الحالية إلى 1 عند إدخال نص في البحث
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm]);
@@ -137,6 +122,7 @@ export default function StatesPage() {
   const currentSectors = filteredSectors.slice(indexOfFirstRow, indexOfLastRow);
   const totalPages = Math.ceil(filteredSectors.length / rowsPerPage);
 
+  
   return (
     <div style={styles.container}>
       {/* رأس الصفحة: زر الرجوع لشاشة التهيئة + العنوان وأزرار الإجراءات */}
