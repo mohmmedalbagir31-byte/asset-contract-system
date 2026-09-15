@@ -134,18 +134,16 @@ export default function UsersPage() {
   const confirmDelete = async () => {
     try {
       setIsLoading(true);
-      const headers = getAuthHeaders();
-      delete headers['Content-Type'];
-
-      const response = await fetch(`${API_URL}/${targetId}`, { method: 'DELETE', headers });
-      if (response.status === 401) throw new Error('غير مصرح لك بالحذف.');
-      if (!response.ok) throw new Error('فشل حذف المستخدم');
+      
+      // استخدام الـ API المركزي لعمل حذف مع تمرير المعرف مباشرة
+      await API.delete(`/user/${targetId}`);
 
       setShowDeleteModal(false);
       setTargetId(null);
       fetchUsers();
     } catch (err) {
-      alert(err.message);
+      const errorMsg = err.response?.data?.message || err.message || 'فشل حذف المستخدم';
+      alert(errorMsg);
     } finally {
       setIsLoading(false);
     }
