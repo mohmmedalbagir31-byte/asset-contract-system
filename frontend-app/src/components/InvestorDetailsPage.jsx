@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-
-const API_INVESTOR_URL = 'http://localhost:5210/api/investor';
+import API from '../api'; // استيراد ملف الـ API المركزي
 
 export default function InvestorDetailsPage() {
   const { id } = useParams();
@@ -11,26 +10,18 @@ export default function InvestorDetailsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
-    return {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    };
-  };
-
   const fetchInvestorDetails = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_INVESTOR_URL}/${id}`, { headers: getAuthHeaders() });
-      if (res.status === 401) throw new Error('انتهت صلاحية الجلسة.');
-      if (!res.ok) throw new Error('فشل جلب بيانات المستثمر');
-      
-      const data = await res.json();
-      setInvestor(data);
+      const res = await API.get(`/investor/${id}`);
+      setInvestor(res.data);
       setError('');
     } catch (err) {
-      setError(err.message || 'حدث خطأ في جلب التفاصيل');
+      if (err.response && err.response.status === 401) {
+        setError('انتهت صلاحية الجلسة.');
+      } else {
+        setError(err.response?.data?.message || err.message || 'حدث خطأ في جلب التفاصيل');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -58,6 +49,7 @@ export default function InvestorDetailsPage() {
   const activeContracts = contractsList.filter(c => c.status === 'ساري').length;
   const totalMonthlyRent = contractsList.reduce((acc, c) => acc + (c.monthlyRentValue || 0), 0);
 
+  
   return (
     <div style={styles.pageWrapper}>
       {/* تنسيقات الطباعة الخاصة */}

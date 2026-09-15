@@ -14,21 +14,17 @@ export default function UnitDetailsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 10;
 
-  // تم حذف getAuthHeaders لأن ملف api.js يضيف التوكن تلقائياً
-
   const fetchUnitData = async () => {
     setIsLoading(true);
     try {
-      // استخدام API.get مع دمج الـ id بشكل مباشر ونظيف
       const response = await API.get(`/propertyunit/${id}`);
-
       setUnit(response.data);
       setError('');
     } catch (err) {
       if (err.response && err.response.status === 401) {
         setError('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
       } else {
-        setError(err.message || 'فشل في جلب بيانات الوحدة');
+        setError(err.response?.data?.message || err.message || 'فشل في جلب بيانات الوحدة');
       }
     } finally {
       setIsLoading(false);
@@ -40,6 +36,7 @@ export default function UnitDetailsPage() {
       fetchUnitData();
     }
   }, [id]);
+
   const contracts = unit?.contracts || [];
   const totalContracts = contracts.length;
   const activeContracts = contracts.filter(c => c.status === 'ساري').length;
@@ -51,6 +48,20 @@ export default function UnitDetailsPage() {
   const indexOfFirstRow = indexOfLastRow - rowsPerPage;
   const currentContracts = contracts.slice(indexOfFirstRow, indexOfLastRow);
   const totalPages = Math.ceil(contracts.length / rowsPerPage);
+
+  if (isLoading) {
+    return <div style={{ textAlign: 'center', padding: '50px' }}>جاري تحميل تفاصيل الوحدة...</div>;
+  }
+
+  if (error) {
+    return (
+      <div style={{ textAlign: 'center', padding: '50px', color: 'red' }}>
+        <p>{error}</p>
+        <button onClick={() => navigate(-1)} style={{ padding: '8px 16px', cursor: 'pointer' }}>رجوع</button>
+      </div>
+    );
+  }
+
 
   return (
     <div style={styles.container}>

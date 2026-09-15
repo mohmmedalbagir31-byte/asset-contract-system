@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-
-const API_URL = 'http://localhost:5210/api/property';
-const CITIES_API = 'http://localhost:5210/api/city';
-const OWNERS_API = 'http://localhost:5210/api/owner';
+import API from '../api'; // استيراد ملف الـ API المركزي
 
 const OWNERSHIP_TYPES = [
   'شهادة بحث',
@@ -44,40 +41,26 @@ export default function PropertiesPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [targetId, setTargetId] = useState(null);
 
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
-    return {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    };
-  };
-
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const headers = getAuthHeaders();
+      // جلب البيانات بشكل متوازي باستخدام الـ API المركزي
       const [propRes, cityRes, ownerRes] = await Promise.all([
-        fetch(API_URL, { headers }),
-        fetch(CITIES_API, { headers }),
-        fetch(OWNERS_API, { headers })
+        API.get('/property'),
+        API.get('/city').catch(() => ({ data: [] })),
+        API.get('/owner').catch(() => ({ data: [] }))
       ]);
 
-      if (propRes.status === 401 || cityRes.status === 401 || ownerRes.status === 401) {
-        throw new Error('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
-      }
-
-      if (!propRes.ok) throw new Error('فشل في جلب بيانات العقارات');
-
-      const propData = await propRes.json();
-      const cityData = cityRes.ok ? await cityRes.json() : [];
-      const ownerData = ownerRes.ok ? await ownerRes.json() : [];
-
-      setProperties(Array.isArray(propData) ? propData : []);
-      setCities(Array.isArray(cityData) ? cityData : []);
-      setOwners(Array.isArray(ownerData) ? ownerData : []);
+      setProperties(Array.isArray(propRes.data) ? propRes.data : []);
+      setCities(Array.isArray(cityRes.data) ? cityRes.data : []);
+      setOwners(Array.isArray(ownerRes.data) ? ownerRes.data : []);
       setError('');
     } catch (err) {
-      setError(err.message || 'حدث خطأ غير معروف');
+      if (err.response && err.response.status === 401) {
+        setError('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
+      } else {
+        setError(err.response?.data?.message || err.message || 'حدث خطأ غير معروف');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -95,9 +78,6 @@ export default function PropertiesPage() {
   const handleSaveProperty = async (e) => {
     e.preventDefault();
     try {
-      const method = isEditing ? 'PUT' : 'POST';
-      const url = isEditing ? `${API_URL}/${currentProperty.id}` : API_URL;
-
       const payload = {
         ...currentProperty,
         id: currentProperty.id || 0,
@@ -105,28 +85,10 @@ export default function PropertiesPage() {
         ownerId: Number(currentProperty.ownerId)
       };
 
-      const response = await fetch(url, {
-        method: method,
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload),
-      });
-
-      if (response.status === 401) throw new Error('غير مصرح لك بالقيام بهذا الإجراء.');
-
-      if (!response.ok) {
-        let errorMsg = 'فشل حفظ بيانات العقار';
-        try {
-          const errorData = await response.json();
-          if (errorData.errors) {
-            const firstErrorKey = Object.keys(errorData.errors)[0];
-            errorMsg = errorData.errors[firstErrorKey][0];
-          } else {
-            errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
-          }
-        } catch {
-          errorMsg = await response.text();
-        }
-        throw new Error(errorMsg);
+      if (isEditing) {
+        await API.put(`/property/${currentProperty.id}`, payload);
+      } else {
+        await API.post('/property', payload);
       }
 
       setShowModal(false);
@@ -136,7 +98,14 @@ export default function PropertiesPage() {
       setIsEditing(false);
       fetchData();
     } catch (err) {
-      alert(err.message);
+      let errorMsg = 'فشل حفظ بيانات العقار';
+      if (err.response?.data?.errors) {
+        const firstErrorKey = Object.keys(err.response.data.errors)[0];
+        errorMsg = err.response.data.errors[firstErrorKey][0];
+      } else {
+        errorMsg = err.response?.data?.message || err.response?.data?.title || err.message || errorMsg;
+      }
+      alert(errorMsg);
     }
   };
 
@@ -157,27 +126,11 @@ export default function PropertiesPage() {
   const confirmDelete = async () => {
     try {
       setIsLoading(true);
-      let response;
-      const headers = getAuthHeaders();
-      delete headers['Content-Type'];
 
       if (deleteTarget === 'single') {
-        response = await fetch(`${API_URL}/${targetId}`, { method: 'DELETE', headers });
+        await API.delete(`/property/${targetId}`);
       } else if (deleteTarget === 'all') {
-        response = await fetch(`${API_URL}/deleteAll`, { method: 'DELETE', headers });
-      }
-
-      if (response?.status === 401) throw new Error('غير مصرح لك بالحذف.');
-
-      if (!response || !response.ok) {
-        let errorMsg = 'فشل عملية الحذف';
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
-        } catch {
-          errorMsg = await response.text();
-        }
-        throw new Error(errorMsg);
+        await API.delete('/property/deleteAll');
       }
 
       setShowDeleteModal(false);
@@ -185,7 +138,8 @@ export default function PropertiesPage() {
       setTargetId(null);
       fetchData();
     } catch (err) {
-      alert(err.message);
+      const errorMsg = err.response?.data?.message || err.response?.data?.title || err.message || 'فشل عملية الحذف';
+      alert(errorMsg);
     } finally {
       setIsLoading(false);
     }

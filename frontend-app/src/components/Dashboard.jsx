@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
-import axios from 'axios';
+import API from '../api'; // استيراد ملف الـ API المركزي
 
 import SectorsPage from './SectorsPage';
 import Statespage from './StatesPage';
@@ -30,10 +30,8 @@ export default function Dashboard({ userFullName, onLogout }) {
   const fetchDashboardStats = async () => {
     try {
       setLoadingStats(true);
-      const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:5210/api/dashboard/stats', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      // استخدام ملف الـ API المركزي بدلاً من الرابط الثابت
+      const response = await API.get('/dashboard/stats');
       setStats(response.data);
     } catch (error) {
       console.error('خطأ في جلب إحصائيات الداشبورد:', error);
@@ -64,6 +62,7 @@ export default function Dashboard({ userFullName, onLogout }) {
     ...(isAdmin ? [{ id: 'users', title: 'المستخدمين', icon: '👤', path: '/users' }] : []),
   ];
 
+  
   return (
     <div style={styles.dashboardContainer}>
       {/* Navbar احترافي */}

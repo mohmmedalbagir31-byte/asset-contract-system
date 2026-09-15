@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-
-const PROPERTY_API = 'http://localhost:5210/api/property';
-const UNITS_API = 'http://localhost:5210/api/propertyunit';
+import API from '../api'; // استيراد ملف الـ API المركزي
 
 const ACTIVITY_TYPES = ['تجاري', 'إداري', 'سكني', 'خدمي'];
 const STATUS_TYPES = ['شاغر', 'مؤجرة', 'صيانة'];
@@ -32,37 +30,24 @@ export default function PropertyUnitsPage() {
     description: ''
   });
 
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
-    return {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    };
-  };
-
   const fetchPropertyData = async () => {
     setIsLoading(true);
     try {
-      const headers = getAuthHeaders();
+      // جلب بيانات العقار ووحداته بشكل متوازي باستخدام الـ API المركزي
       const [propRes, unitsRes] = await Promise.all([
-        fetch(`${PROPERTY_API}/${id}`, { headers }),
-        fetch(`${UNITS_API}/property/${id}`, { headers })
+        API.get(`/property/${id}`),
+        API.get(`/propertyunit/property/${id}`).catch(() => ({ data: [] }))
       ]);
 
-      if (propRes.status === 401 || unitsRes.status === 401) {
-        throw new Error('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
-      }
-
-      if (!propRes.ok) throw new Error('فشل في جلب بيانات العقار');
-
-      const propData = await propRes.json();
-      const unitsData = unitsRes.ok ? await unitsRes.json() : [];
-
-      setProperty(propData);
-      setUnits(Array.isArray(unitsData) ? unitsData : []);
+      setProperty(propRes.data);
+      setUnits(Array.isArray(unitsRes.data) ? unitsRes.data : []);
       setError('');
     } catch (err) {
-      setError(err.message || 'حدث خطأ غير معروف');
+      if (err.response && err.response.status === 401) {
+        setError('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
+      } else {
+        setError(err.response?.data?.message || err.message || 'حدث خطأ غير معروف');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -77,9 +62,6 @@ export default function PropertyUnitsPage() {
   const handleSaveUnit = async (e) => {
     e.preventDefault();
     try {
-      const method = isEditing ? 'PUT' : 'POST';
-      const url = isEditing ? `${UNITS_API}/${currentUnit.id}` : UNITS_API;
-
       const payload = {
         ...currentUnit,
         id: currentUnit.id || 0,
@@ -87,23 +69,10 @@ export default function PropertyUnitsPage() {
         areaSize: parseFloat(currentUnit.areaSize) || 0
       };
 
-      const response = await fetch(url, {
-        method: method,
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload),
-      });
-
-      if (response.status === 401) throw new Error('غير مصرح لك بالقيام بهذا الإجراء.');
-
-      if (!response.ok) {
-        let errorMsg = 'فشل حفظ بيانات الوحدة';
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
-        } catch {
-          errorMsg = await response.text();
-        }
-        throw new Error(errorMsg);
+      if (isEditing) {
+        await API.put(`/propertyunit/${currentUnit.id}`, payload);
+      } else {
+        await API.post('/propertyunit', payload);
       }
 
       setShowModal(false);
@@ -113,7 +82,14 @@ export default function PropertyUnitsPage() {
       setIsEditing(false);
       fetchPropertyData();
     } catch (err) {
-      alert(err.message);
+      let errorMsg = 'فشل حفظ بيانات الوحدة';
+      if (err.response?.data?.errors) {
+        const firstErrorKey = Object.keys(err.response.data.errors)[0];
+        errorMsg = err.response.data.errors[firstErrorKey][0];
+      } else {
+        errorMsg = err.response?.data?.message || err.response?.data?.title || err.message || errorMsg;
+      }
+      alert(errorMsg);
     }
   };
 
@@ -134,14 +110,11 @@ export default function PropertyUnitsPage() {
   const handleDeleteUnit = async (unitId) => {
     if (!window.confirm('هل أنت متأكد من رغبتك في حذف هذه الوحدة؟')) return;
     try {
-      const headers = getAuthHeaders();
-      delete headers['Content-Type'];
-      const response = await fetch(`${UNITS_API}/${unitId}`, { method: 'DELETE', headers });
-
-      if (!response.ok) throw new Error('فشل حذف الوحدة');
+      await API.delete(`/propertyunit/${unitId}`);
       fetchPropertyData();
     } catch (err) {
-      alert(err.message);
+      const errorMsg = err.response?.data?.message || err.response?.data?.title || err.message || 'فشل حذف الوحدة';
+      alert(errorMsg);
     }
   };
 
@@ -241,6 +214,7 @@ export default function PropertyUnitsPage() {
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentUnits = units.slice(indexOfFirstItem, indexOfLastItem);
 
+  
   return (
     <div style={styles.container}>
       <div style={styles.topBar}>
