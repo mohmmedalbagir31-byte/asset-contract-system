@@ -1,4 +1,61 @@
-const handleSaveUser = async (e) => {
+import React, { useState, useEffect } from 'react';
+import API from '../api'; // تم استيراد ملف الـ API المركزي
+
+export default function UsersPage() {
+  const [users, setUsers] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  // حالات ترقيم الصفحات (10 صفوف لكل صفحة)
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 10;
+
+  const [showModal, setShowModal] = useState(false);
+  const [currentUser, setCurrentUser] = useState({ 
+    id: null, 
+    username: '', 
+    fullName: '', 
+    email: '', 
+    role: 'User', 
+    isActive: true, 
+    passwordHash: '' 
+  });
+  const [isEditing, setIsEditing] = useState(false);
+
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [targetId, setTargetId] = useState(null);
+
+  // تم حذف getAuthHeaders لأن ملف api.js يضيف التوكن تلقائياً
+
+  const fetchUsers = async () => {
+    setIsLoading(true);
+    try {
+      // استخدام API.get مع المسار النسبي فقط
+      const response = await API.get('/user');
+      
+      setUsers(Array.isArray(response.data) ? response.data : []);
+      setError('');
+    } catch (err) {
+      if (err.response && err.response.status === 401) {
+        setError('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
+      } else {
+        setError(err.message || 'فشل في جلب بيانات المستخدمين');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+  // إعادة الصفحة إلى رقم 1 تلقائياً عند البحث
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
+  const handleSaveUser = async (e) => {
     e.preventDefault();
     try {
       const payload = {
@@ -59,6 +116,41 @@ const handleSaveUser = async (e) => {
       setIsLoading(false);
     }
   };
+
+  const handleOpenEdit = (userItem) => {
+    setCurrentUser({ 
+      id: userItem?.id || null, 
+      username: userItem?.username || '', 
+      fullName: userItem?.fullName || '', 
+      email: userItem?.email || '', 
+      role: userItem?.role || 'User', 
+      isActive: userItem?.isActive ?? true, 
+      passwordHash: '' 
+    });
+    setIsEditing(true);
+    setShowModal(true);
+  };
+
+  const confirmDelete = async () => {
+    try {
+      setIsLoading(true);
+      const headers = getAuthHeaders();
+      delete headers['Content-Type'];
+
+      const response = await fetch(`${API_URL}/${targetId}`, { method: 'DELETE', headers });
+      if (response.status === 401) throw new Error('غير مصرح لك بالحذف.');
+      if (!response.ok) throw new Error('فشل حذف المستخدم');
+
+      setShowDeleteModal(false);
+      setTargetId(null);
+      fetchUsers();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const filteredUsers = Array.isArray(users) ? users.filter((u) => {
     if (!u) return false;
     const usernameMatch = u.username ? u.username.toLowerCase().includes(searchTerm.toLowerCase()) : false;
