@@ -29,7 +29,7 @@ namespace AssetContractSystem.Controllers
             var totalUnits = await _context.PropertyUnits.CountAsync();
             var rentedUnits = await _context.PropertyUnits.CountAsync(u => u.Status == "مؤجرة");
             var vacantUnits = await _context.PropertyUnits.CountAsync(u => u.Status == "شاغر");
-            var maintenanceUnits = await _context.PropertyUnits.CountAsync(u => u.Status == "تحت الصيانة");
+            var maintenanceUnits = await _context.PropertyUnits.CountAsync(u => u.Status == "صيانة");
 
             var totalContracts = await _context.Contracts.CountAsync();
             var activeContracts = await _context.Contracts.CountAsync(c => c.Status == "ساري");
