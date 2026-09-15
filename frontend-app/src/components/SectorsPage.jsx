@@ -1,43 +1,45 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import API from '../api'; // استيراد ملف الـ API المركزي
 
-export default function SectorsPage() {
+export default function StatesPage() {
   const navigate = useNavigate(); 
+  const [states, setStates] = useState([]);
   const [sectors, setSectors] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // حالات ترقيم الصفحات (10 قطاعات لكل صفحة)
+  // حالات ترقيم الصفحات (10 ولايات لكل صفحة كحد أقصى)
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 10;
 
-  // حالة النافذة المنبثقة (Modal) لإضافة أو تعديل قطاع
   const [showModal, setShowModal] = useState(false);
-  const [currentSector, setCurrentSector] = useState({ id: null, name: '', description: '' });
+  const [currentState, setCurrentState] = useState({ id: null, name: '', sectorId: '' });
   const [isEditing, setIsEditing] = useState(false);
 
-  // حالة نافذة تأكيد الحذف الخاصة بالنظام
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [targetId, setTargetId] = useState(null);
 
-  // تم حذف getAuthHeaders لأن ملف api.js يقوم بإرفاق التوكن تلقائياً
-
-  // 1. جلب القطاعات باستخدام ملف الـ API المركزي
-  const fetchSectors = async () => {
+  const fetchData = async () => {
     setIsLoading(true);
     try {
-      const response = await API.get('/sector');
+      // جلب الولايات والقطاعات بالتوازي باستخدام API.get المركزي
+      const [statesRes, sectorsRes] = await Promise.all([
+        API.get('/state'),
+        API.get('/sector').catch(() => ({ data: [] })) // حماية في حال فشل جلب القطاعات
+      ]);
       
-      setSectors(Array.isArray(response.data) ? response.data : []);
+      setStates(Array.isArray(statesRes.data) ? statesRes.data : []);
+      setSectors(Array.isArray(sectorsRes.data) ? sectorsRes.data : []);
+      
       setError('');
     } catch (err) {
       if (err.response && err.response.status === 401) {
-        setError('انتهت صلاحية الجلسة أو غير مصرح لك (Unauthorized). يرجى تسجيل الدخول مجدداً.');
+        setError('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
       } else {
-        setError(err.message || 'فشل في جلب البيانات من الخادم');
+        setError(err.message || 'فشل في جلب البيانات');
       }
     } finally {
       setIsLoading(false);
@@ -45,114 +47,86 @@ export default function SectorsPage() {
   };
 
   useEffect(() => {
-    fetchSectors();
+    fetchData();
   }, []);
 
-  // العودة خطوة للوراء
   const handleBack = () => {
-    navigate(-1); 
+    navigate(-1);
   };
 
-  // 2. حفظ قطاع جديد أو تعديل قطاع قائم مع إرسال التوكن
-  const handleSaveSector = async (e) => {
+  const handleSaveState = async (e) => {
     e.preventDefault();
     try {
-      const method = isEditing ? 'PUT' : 'POST';
-      const url = isEditing ? `${API_URL}/${currentSector.id}` : API_URL;
-
-      const response = await fetch(url, {
-        method: method,
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          id: currentSector.id || 0,
-          name: currentSector.name,
-          description: currentSector.description || ''
-        }),
-      });
-
-      if (response.status === 401) {
-        throw new Error('غير مصرح لك بالقيام بهذا الإجراء. يرجى تسجيل الدخول.');
+      if (!currentState.sectorId) {
+        alert('الرجاء اختيار القطاع الذي تتبع له الولاية.');
+        return;
       }
 
-      if (!response.ok) {
-        let errorMsg = 'فشل حفظ البيانات';
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
-        } catch {
-          errorMsg = await response.text();
-        }
-        throw new Error(errorMsg);
+      const payload = {
+        id: currentState.id || 0,
+        name: currentState.name,
+        sectorId: parseInt(currentState.sectorId)
+      };
+
+      // استخدام الـ API المركزي بدلاً من fetch والـ URL المحلي
+      if (isEditing) {
+        await API.put(`/state/${currentState.id}`, payload);
+      } else {
+        await API.post('/state', payload);
       }
 
       setShowModal(false);
-      setCurrentSector({ id: null, name: '', description: '' });
+      setCurrentState({ id: null, name: '', sectorId: '' });
       setIsEditing(false);
-      fetchSectors();
+      fetchData();
     } catch (err) {
-      alert(err.message);
+      const errorMsg = err.response?.data?.message || err.response?.data?.title || err.message || 'فشل حفظ البيانات';
+      alert(errorMsg);
     }
   };
 
-  // 3. فتح نافذة التعديل
-  const handleOpenEdit = (sector) => {
-    setCurrentSector({ id: sector.id, name: sector.name, description: sector.description || '' });
+  const handleOpenEdit = (stateItem) => {
+    setCurrentState({ 
+      id: stateItem.id, 
+      name: stateItem.name, 
+      sectorId: stateItem.sectorId || (stateItem.sector ? stateItem.sector.id : '')
+    });
     setIsEditing(true);
     setShowModal(true);
   };
 
-  // 4. تنفيذ الحذف الفعلي مع إرسال التوكن
   const confirmDelete = async () => {
     try {
       setIsLoading(true);
-      let response;
 
-      const headers = getAuthHeaders();
-      delete headers['Content-Type']; 
-
+      // استخدام الـ API المركزي المباشر لعمليات الحذف (مفرد أو جماعي)
       if (deleteTarget === 'single') {
-        response = await fetch(`${API_URL}/${targetId}`, { 
-          method: 'DELETE',
-          headers: headers
-        });
+        await API.delete(`/state/${targetId}`);
       } else if (deleteTarget === 'all') {
-        response = await fetch(`${API_URL}/deleteAll`, { 
-          method: 'DELETE',
-          headers: headers
-        });
-      }
-
-      if (response.status === 401) {
-        throw new Error('غير مصرح لك بالحذف. يرجى تسجيل الدخول مجدداً.');
-      }
-
-      if (!response.ok) {
-        let errorMsg = 'فشل عملية الحذف';
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
-        } catch {
-          errorMsg = await response.text();
-        }
-        throw new Error(errorMsg);
+        await API.delete('/state/deleteAll');
       }
 
       setShowDeleteModal(false);
       setDeleteTarget(null);
       setTargetId(null);
-      fetchSectors();
+      fetchData();
     } catch (err) {
-      alert(err.message);
+      const errorMsg = err.response?.data?.message || err.message || 'فشل عملية الحذف';
+      alert(errorMsg);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const filteredSectors = Array.isArray(sectors) ? sectors.filter((sector) =>
-    sector.name.toLowerCase().includes(searchTerm.toLowerCase())
-  ) : [];
+  // فلترة الولايات بناءً على البحث
+  const filteredStates = Array.isArray(states) ? states.filter((st) => {
+    const nameMatch = st.name ? st.name.toLowerCase().includes(searchTerm.toLowerCase()) : false;
+    const sectorName = st.sectorName || (st.sector ? st.sector.name : '');
+    const sectorMatch = sectorName ? sectorName.toLowerCase().includes(searchTerm.toLowerCase()) : false;
+    return nameMatch || sectorMatch;
+  }) : [];
 
-  // إعادة تعيين الصفحة الحالية إلى 1 عند إدخال نص في البحث
+  // إعادة تعيين الصفحة الحالية إلى 1 عند البحث
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm]);

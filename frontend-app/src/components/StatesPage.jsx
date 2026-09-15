@@ -64,30 +64,17 @@ export default function StatesPage() {
         return;
       }
 
-      const method = isEditing ? 'PUT' : 'POST';
-      const url = isEditing ? `${API_URL}/${currentState.id}` : API_URL;
+      const payload = {
+        id: currentState.id || 0,
+        name: currentState.name,
+        sectorId: parseInt(currentState.sectorId)
+      };
 
-      const response = await fetch(url, {
-        method: method,
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          id: currentState.id || 0,
-          name: currentState.name,
-          sectorId: parseInt(currentState.sectorId)
-        }),
-      });
-
-      if (response.status === 401) throw new Error('غير مصرح لك بالقيام بهذا الإجراء.');
-
-      if (!response.ok) {
-        let errorMsg = 'فشل حفظ البيانات';
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
-        } catch {
-          errorMsg = await response.text();
-        }
-        throw new Error(errorMsg);
+      // استخدام الـ API المركزي بدلاً من fetch والـ URL المحلي
+      if (isEditing) {
+        await API.put(`/state/${currentState.id}`, payload);
+      } else {
+        await API.post('/state', payload);
       }
 
       setShowModal(false);
@@ -95,7 +82,8 @@ export default function StatesPage() {
       setIsEditing(false);
       fetchData();
     } catch (err) {
-      alert(err.message);
+      const errorMsg = err.response?.data?.message || err.response?.data?.title || err.message || 'فشل حفظ البيانات';
+      alert(errorMsg);
     }
   };
 
@@ -112,27 +100,12 @@ export default function StatesPage() {
   const confirmDelete = async () => {
     try {
       setIsLoading(true);
-      let response;
-      const headers = getAuthHeaders();
-      delete headers['Content-Type'];
 
+      // استخدام الـ API المركزي لعمليات الحذف (مفرد أو جماعي)
       if (deleteTarget === 'single') {
-        response = await fetch(`${API_URL}/${targetId}`, { method: 'DELETE', headers });
+        await API.delete(`/state/${targetId}`);
       } else if (deleteTarget === 'all') {
-        response = await fetch(`${API_URL}/deleteAll`, { method: 'DELETE', headers });
-      }
-
-      if (response.status === 401) throw new Error('غير مصرح لك بالحذف.');
-
-      if (!response.ok) {
-        let errorMsg = 'فشل عملية الحذف';
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
-        } catch {
-          errorMsg = await response.text();
-        }
-        throw new Error(errorMsg);
+        await API.delete('/state/deleteAll');
       }
 
       setShowDeleteModal(false);
@@ -140,7 +113,41 @@ export default function StatesPage() {
       setTargetId(null);
       fetchData();
     } catch (err) {
-      alert(err.message);
+      const errorMsg = err.response?.data?.message || err.message || 'فشل عملية الحذف';
+      alert(errorMsg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleOpenEdit = (stateItem) => {
+    setCurrentState({ 
+      id: stateItem.id, 
+      name: stateItem.name, 
+      sectorId: stateItem.sectorId || (stateItem.sector ? stateItem.sector.id : '')
+    });
+    setIsEditing(true);
+    setShowModal(true);
+  };
+
+  const confirmDelete = async () => {
+    try {
+      setIsLoading(true);
+
+      // استخدام الـ API المركزي المباشر لعمليات الحذف (مفرد أو جماعي)
+      if (deleteTarget === 'single') {
+        await API.delete(`/state/${targetId}`);
+      } else if (deleteTarget === 'all') {
+        await API.delete('/state/deleteAll');
+      }
+
+      setShowDeleteModal(false);
+      setDeleteTarget(null);
+      setTargetId(null);
+      fetchData();
+    } catch (err) {
+      const errorMsg = err.response?.data?.message || err.message || 'فشل عملية الحذف';
+      alert(errorMsg);
     } finally {
       setIsLoading(false);
     }

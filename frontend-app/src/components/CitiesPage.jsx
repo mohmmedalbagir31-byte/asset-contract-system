@@ -22,8 +22,6 @@ export default function CitiesPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [targetId, setTargetId] = useState(null);
 
-  // تم حذف getAuthHeaders لأن ملف api.js يتولى إضافة التوكن تلقائياً
-
   const fetchData = async () => {
     setIsLoading(true);
     try {
@@ -52,7 +50,7 @@ export default function CitiesPage() {
     fetchData();
   }, []);
 
-  // العودة للصفحة السابقة عند البحث لإعادة التعيين للأولى
+  // العودة للصفحة الأولى عند البحث
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm]);
@@ -69,30 +67,17 @@ export default function CitiesPage() {
         return;
       }
 
-      const method = isEditing ? 'PUT' : 'POST';
-      const url = isEditing ? `${API_URL}/${currentCity.id}` : API_URL;
+      const payload = {
+        id: currentCity.id || 0,
+        name: currentCity.name,
+        stateId: parseInt(currentCity.stateId, 10)
+      };
 
-      const response = await fetch(url, {
-        method: method,
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          id: currentCity.id || 0,
-          name: currentCity.name,
-          stateId: parseInt(currentCity.stateId, 10)
-        }),
-      });
-
-      if (response.status === 401) throw new Error('غير مصرح لك بالقيام بهذا الإجراء.');
-
-      if (!response.ok) {
-        let errorMsg = 'فشل حفظ البيانات';
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
-        } catch {
-          errorMsg = await response.text();
-        }
-        throw new Error(errorMsg);
+      // استخدام الـ API المركزي بدلاً من fetch والـ URL المحلي
+      if (isEditing) {
+        await API.put(`/city/${currentCity.id}`, payload);
+      } else {
+        await API.post('/city', payload);
       }
 
       setShowModal(false);
@@ -100,7 +85,8 @@ export default function CitiesPage() {
       setIsEditing(false);
       fetchData();
     } catch (err) {
-      alert(err.message);
+      const errorMsg = err.response?.data?.message || err.response?.data?.title || err.message || 'فشل حفظ البيانات';
+      alert(errorMsg);
     }
   };
 
@@ -117,27 +103,12 @@ export default function CitiesPage() {
   const confirmDelete = async () => {
     try {
       setIsLoading(true);
-      let response;
-      const headers = getAuthHeaders();
-      delete headers['Content-Type'];
 
+      // استخدام الـ API المركزي المباشر لعمليات الحذف (مفرد أو جماعي)
       if (deleteTarget === 'single') {
-        response = await fetch(`${API_URL}/${targetId}`, { method: 'DELETE', headers });
+        await API.delete(`/city/${targetId}`);
       } else if (deleteTarget === 'all') {
-        response = await fetch(`${API_URL}/deleteAll`, { method: 'DELETE', headers });
-      }
-
-      if (response?.status === 401) throw new Error('غير مصرح لك بالحذف.');
-
-      if (!response || !response.ok) {
-        let errorMsg = 'فشل عملية الحذف';
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
-        } catch {
-          errorMsg = await response.text();
-        }
-        throw new Error(errorMsg);
+        await API.delete('/city/deleteAll');
       }
 
       setShowDeleteModal(false);
@@ -145,11 +116,19 @@ export default function CitiesPage() {
       setTargetId(null);
       fetchData();
     } catch (err) {
-      alert(err.message);
+      const errorMsg = err.response?.data?.message || err.message || 'فشل عملية الحذف';
+      alert(errorMsg);
     } finally {
       setIsLoading(false);
     }
   };
+
+  return (
+    <div>
+      {/* واجهة الـ JSX الخاصة بعرض المدن والجداول والـ Modals */}
+    </div>
+  );
+}
 
   // تصفية المدن بناءً على البحث
   const filteredCities = Array.isArray(cities) ? cities.filter((c) => {
