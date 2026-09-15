@@ -1,66 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import API from '../api'; // تم استيراد ملف الـ API المركزي
-
-export default function UsersPage() {
-  const [users, setUsers] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  // حالات ترقيم الصفحات (10 صفوف لكل صفحة)
-  const [currentPage, setCurrentPage] = useState(1);
-  const rowsPerPage = 10;
-
-  const [showModal, setShowModal] = useState(false);
-  const [currentUser, setCurrentUser] = useState({ 
-    id: null, 
-    username: '', 
-    fullName: '', 
-    email: '', 
-    role: 'User', 
-    isActive: true, 
-    passwordHash: '' 
-  });
-  const [isEditing, setIsEditing] = useState(false);
-
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [targetId, setTargetId] = useState(null);
-
-  // تم حذف getAuthHeaders لأن ملف api.js يضيف التوكن تلقائياً
-
-  const fetchUsers = async () => {
-    setIsLoading(true);
-    try {
-      // استخدام API.get مع المسار النسبي فقط
-      const response = await API.get('/user');
-      
-      setUsers(Array.isArray(response.data) ? response.data : []);
-      setError('');
-    } catch (err) {
-      if (err.response && err.response.status === 401) {
-        setError('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
-      } else {
-        setError(err.message || 'فشل في جلب بيانات المستخدمين');
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-  // إعادة الصفحة إلى رقم 1 تلقائياً عند البحث
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm]);
-
-  const handleSaveUser = async (e) => {
+const handleSaveUser = async (e) => {
     e.preventDefault();
     try {
-      const method = isEditing ? 'PUT' : 'POST';
-      const url = isEditing ? `${API_URL}/${currentUser.id}` : API_URL;
-
       const payload = {
         id: currentUser.id || 0,
         username: currentUser.username,
@@ -71,23 +11,11 @@ export default function UsersPage() {
         passwordHash: currentUser.passwordHash || '123456'
       };
 
-      const response = await fetch(url, {
-        method: method,
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload),
-      });
-
-      if (response.status === 401) throw new Error('غير مصرح لك بالقيام بهذا الإجراء.');
-
-      if (!response.ok) {
-        let errorMsg = 'فشل حفظ البيانات';
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
-        } catch {
-          errorMsg = await response.text();
-        }
-        throw new Error(errorMsg);
+      // استخدام API المركزي بدلاً من fetch وإدارة الـ URL يدوياً
+      if (isEditing) {
+        await API.put(`/user/${currentUser.id}`, payload);
+      } else {
+        await API.post('/user', payload);
       }
 
       setShowModal(false);
@@ -95,7 +23,8 @@ export default function UsersPage() {
       setIsEditing(false);
       fetchUsers();
     } catch (err) {
-      alert(err.message);
+      const errorMsg = err.response?.data?.message || err.response?.data?.title || err.message || 'فشل حفظ البيانات';
+      alert(errorMsg);
     }
   };
 
@@ -116,23 +45,20 @@ export default function UsersPage() {
   const confirmDelete = async () => {
     try {
       setIsLoading(true);
-      const headers = getAuthHeaders();
-      delete headers['Content-Type'];
-
-      const response = await fetch(`${API_URL}/${targetId}`, { method: 'DELETE', headers });
-      if (response.status === 401) throw new Error('غير مصرح لك بالحذف.');
-      if (!response.ok) throw new Error('فشل حذف المستخدم');
+      
+      // استخدام API.delete مع المسار المركزي مباشرة
+      await API.delete(`/user/${targetId}`);
 
       setShowDeleteModal(false);
       setTargetId(null);
       fetchUsers();
     } catch (err) {
-      alert(err.message);
+      const errorMsg = err.response?.data?.message || err.message || 'فشل حذف المستخدم';
+      alert(errorMsg);
     } finally {
       setIsLoading(false);
     }
   };
-
   const filteredUsers = Array.isArray(users) ? users.filter((u) => {
     if (!u) return false;
     const usernameMatch = u.username ? u.username.toLowerCase().includes(searchTerm.toLowerCase()) : false;
