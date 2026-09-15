@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import API from '../api'; // استيراد ملف الـ API المركزي
+import API from '../api';
 
 export default function StatesPage() {
   const navigate = useNavigate(); 
@@ -10,7 +10,6 @@ export default function StatesPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // حالات ترقيم الصفحات (10 ولايات لكل صفحة كحد أقصى)
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 10;
 
@@ -25,15 +24,13 @@ export default function StatesPage() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      // جلب الولايات والقطاعات بالتوازي باستخدام API.get المركزي
       const [statesRes, sectorsRes] = await Promise.all([
         API.get('/state'),
-        API.get('/sector').catch(() => ({ data: [] })) // حماية في حال فشل جلب القطاعات
+        API.get('/sector').catch(() => ({ data: [] }))
       ]);
       
       setStates(Array.isArray(statesRes.data) ? statesRes.data : []);
       setSectors(Array.isArray(sectorsRes.data) ? sectorsRes.data : []);
-      
       setError('');
     } catch (err) {
       if (err.response && err.response.status === 401) {
@@ -116,7 +113,6 @@ export default function StatesPage() {
     }
   };
 
-  // فلترة الولايات بناءً على البحث
   const filteredStates = Array.isArray(states) ? states.filter((st) => {
     const nameMatch = st.name ? st.name.toLowerCase().includes(searchTerm.toLowerCase()) : false;
     const sectorName = st.sectorName || (st.sector ? st.sector.name : '');
@@ -124,17 +120,14 @@ export default function StatesPage() {
     return nameMatch || sectorMatch;
   }) : [];
 
-  // إعادة تعيين الصفحة الحالية إلى 1 عند البحث
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm]);
 
-  // تقسيم الصفحات: عرض 10 عناصر فقط في الصفحة الحالية
   const indexOfLastRow = currentPage * rowsPerPage;
   const indexOfFirstRow = indexOfLastRow - rowsPerPage;
   const currentStates = filteredStates.slice(indexOfFirstRow, indexOfLastRow);
   const totalPages = Math.ceil(filteredStates.length / rowsPerPage);
-
   return (
     <div style={styles.container}>
       {/* رأس الصفحة: زر الرجوع لشاشة التهيئة + العنوان وأزرار الإجراءات */}
