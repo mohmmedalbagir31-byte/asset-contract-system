@@ -123,13 +123,6 @@ export default function CitiesPage() {
     }
   };
 
-  return (
-    <div>
-      {/* واجهة الـ JSX الخاصة بعرض المدن والجداول والـ Modals */}
-    </div>
-  );
-}
-
   // تصفية المدن بناءً على البحث
   const filteredCities = Array.isArray(cities) ? cities.filter((c) => {
     if (!c) return false;
