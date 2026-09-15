@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-
-const API_URL = 'http://localhost:5210/api/owner';
+import API from '../api'; // استيراد ملف الـ API المركزي
 
 export default function OwnersPage() {
   const navigate = useNavigate();
@@ -31,26 +30,18 @@ export default function OwnersPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [targetId, setTargetId] = useState(null);
 
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
-    return {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    };
-  };
-
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const headers = getAuthHeaders();
-      const res = await fetch(API_URL, { headers });
-      if (res.status === 401) throw new Error('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
-      if (!res.ok) throw new Error('فشل في جلب بيانات الملاك');
-      const data = await res.json();
-      setOwners(Array.isArray(data) ? data : []);
+      const res = await API.get('/owner');
+      setOwners(Array.isArray(res.data) ? res.data : []);
       setError('');
     } catch (err) {
-      setError(err.message || 'حدث خطأ غير معروف');
+      if (err.response && err.response.status === 401) {
+        setError('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
+      } else {
+        setError(err.response?.data?.message || err.message || 'فشل في جلب بيانات الملاك');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -77,36 +68,15 @@ export default function OwnersPage() {
   const handleSaveOwner = async (e) => {
     e.preventDefault();
     try {
-      const method = isEditing ? 'PUT' : 'POST';
-      const url = isEditing ? `${API_URL}/${currentOwner.id}` : API_URL;
-
       const payload = {
         ...currentOwner,
         id: currentOwner.id || 0
       };
 
-      const response = await fetch(url, {
-        method: method,
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload),
-      });
-
-      if (response.status === 401) throw new Error('غير مصرح لك بالقيام بهذا الإجراء.');
-
-      if (!response.ok) {
-        let errorMsg = 'فشل حفظ البيانات';
-        try {
-          const errorData = await response.json();
-          if (errorData.errors) {
-            const firstErrorKey = Object.keys(errorData.errors)[0];
-            errorMsg = errorData.errors[firstErrorKey][0];
-          } else {
-            errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
-          }
-        } catch {
-          errorMsg = await response.text();
-        }
-        throw new Error(errorMsg);
+      if (isEditing) {
+        await API.put(`/owner/${currentOwner.id}`, payload);
+      } else {
+        await API.post('/owner', payload);
       }
 
       setShowModal(false);
@@ -116,7 +86,14 @@ export default function OwnersPage() {
       setIsEditing(false);
       fetchData();
     } catch (err) {
-      alert(err.message);
+      let errorMsg = 'فشل حفظ البيانات';
+      if (err.response?.data?.errors) {
+        const firstErrorKey = Object.keys(err.response.data.errors)[0];
+        errorMsg = err.response.data.errors[firstErrorKey][0];
+      } else {
+        errorMsg = err.response?.data?.message || err.response?.data?.title || err.message || errorMsg;
+      }
+      alert(errorMsg);
     }
   };
 
@@ -135,27 +112,11 @@ export default function OwnersPage() {
   const confirmDelete = async () => {
     try {
       setIsLoading(true);
-      let response;
-      const headers = getAuthHeaders();
-      delete headers['Content-Type'];
 
       if (deleteTarget === 'single') {
-        response = await fetch(`${API_URL}/${targetId}`, { method: 'DELETE', headers });
+        await API.delete(`/owner/${targetId}`);
       } else if (deleteTarget === 'all') {
-        response = await fetch(`${API_URL}/deleteAll`, { method: 'DELETE', headers });
-      }
-
-      if (response?.status === 401) throw new Error('غير مصرح لك بالحذف.');
-
-      if (!response || !response.ok) {
-        let errorMsg = 'فشل عملية الحذف';
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
-        } catch {
-          errorMsg = await response.text();
-        }
-        throw new Error(errorMsg);
+        await API.delete('/owner/deleteAll');
       }
 
       setShowDeleteModal(false);
@@ -163,11 +124,13 @@ export default function OwnersPage() {
       setTargetId(null);
       fetchData();
     } catch (err) {
-      alert(err.message);
+      const errorMsg = err.response?.data?.message || err.response?.data?.title || err.message || 'فشل عملية الحذف';
+      alert(errorMsg);
     } finally {
       setIsLoading(false);
     }
   };
+
 
   const filteredOwners = Array.isArray(owners) ? owners.filter((owner) => {
     if (!owner) return false;
