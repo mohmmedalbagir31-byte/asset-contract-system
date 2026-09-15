@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-const API_URL = 'http://localhost:5210/api/sector';
+import { useNavigate } from 'react-router-dom';
+import API from '../api'; // استيراد ملف الـ API المركزي
 
 export default function SectorsPage() {
   const navigate = useNavigate(); 
@@ -23,33 +23,19 @@ export default function SectorsPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [targetId, setTargetId] = useState(null);
 
-  // دالة مساعدة للحصول على التوكن من الـ LocalStorage
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('token'); 
-    return {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    };
-  };
-
-  // 1. جلب القطاعات من الـ API مع إرسال التوكن
+  // 1. جلب القطاعات من الـ API
   const fetchSectors = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(API_URL, {
-        headers: getAuthHeaders()
-      });
-      
-      if (response.status === 401) {
-        throw new Error('انتهت صلاحية الجلسة أو غير مصرح لك (Unauthorized). يرجى تسجيل الدخول مجدداً.');
-      }
-      if (!response.ok) throw new Error('فشل في جلب البيانات من الخادم');
-      
-      const data = await response.json();
-      setSectors(Array.isArray(data) ? data : []);
+      const response = await API.get('/sector');
+      setSectors(Array.isArray(response.data) ? response.data : []);
       setError('');
     } catch (err) {
-      setError(err.message);
+      if (err.response && err.response.status === 401) {
+        setError('انتهت صلاحية الجلسة أو غير مصرح لك (Unauthorized). يرجى تسجيل الدخول مجدداً.');
+      } else {
+        setError(err.response?.data?.message || err.message || 'فشل في جلب البيانات من الخادم');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -64,36 +50,20 @@ export default function SectorsPage() {
     navigate(-1); 
   };
 
-  // 2. حفظ قطاع جديد أو تعديل قطاع قائم مع إرسال التوكن
+  // 2. حفظ قطاع جديد أو تعديل قطاع قائم
   const handleSaveSector = async (e) => {
     e.preventDefault();
     try {
-      const method = isEditing ? 'PUT' : 'POST';
-      const url = isEditing ? `${API_URL}/${currentSector.id}` : API_URL;
+      const payload = {
+        id: currentSector.id || 0,
+        name: currentSector.name,
+        description: currentSector.description || ''
+      };
 
-      const response = await fetch(url, {
-        method: method,
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          id: currentSector.id || 0,
-          name: currentSector.name,
-          description: currentSector.description || ''
-        }),
-      });
-
-      if (response.status === 401) {
-        throw new Error('غير مصرح لك بالقيام بهذا الإجراء. يرجى تسجيل الدخول.');
-      }
-
-      if (!response.ok) {
-        let errorMsg = 'فشل حفظ البيانات';
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
-        } catch {
-          errorMsg = await response.text();
-        }
-        throw new Error(errorMsg);
+      if (isEditing) {
+        await API.put(`/sector/${currentSector.id}`, payload);
+      } else {
+        await API.post('/sector', payload);
       }
 
       setShowModal(false);
@@ -101,7 +71,14 @@ export default function SectorsPage() {
       setIsEditing(false);
       fetchSectors();
     } catch (err) {
-      alert(err.message);
+      let errorMsg = 'فشل حفظ البيانات';
+      if (err.response?.data?.errors) {
+        const firstErrorKey = Object.keys(err.response.data.errors)[0];
+        errorMsg = err.response.data.errors[firstErrorKey][0];
+      } else {
+        errorMsg = err.response?.data?.message || err.response?.data?.title || err.message || errorMsg;
+      }
+      alert(errorMsg);
     }
   };
 
@@ -112,40 +89,15 @@ export default function SectorsPage() {
     setShowModal(true);
   };
 
-  // 4. تنفيذ الحذف الفعلي مع إرسال التوكن
+  // 4. تنفيذ الحذف الفعلي
   const confirmDelete = async () => {
     try {
       setIsLoading(true);
-      let response;
-
-      const headers = getAuthHeaders();
-      delete headers['Content-Type']; 
 
       if (deleteTarget === 'single') {
-        response = await fetch(`${API_URL}/${targetId}`, { 
-          method: 'DELETE',
-          headers: headers
-        });
+        await API.delete(`/sector/${targetId}`);
       } else if (deleteTarget === 'all') {
-        response = await fetch(`${API_URL}/deleteAll`, { 
-          method: 'DELETE',
-          headers: headers
-        });
-      }
-
-      if (response.status === 401) {
-        throw new Error('غير مصرح لك بالحذف. يرجى تسجيل الدخول مجدداً.');
-      }
-
-      if (!response.ok) {
-        let errorMsg = 'فشل عملية الحذف';
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
-        } catch {
-          errorMsg = await response.text();
-        }
-        throw new Error(errorMsg);
+        await API.delete('/sector/deleteAll');
       }
 
       setShowDeleteModal(false);
@@ -153,7 +105,8 @@ export default function SectorsPage() {
       setTargetId(null);
       fetchSectors();
     } catch (err) {
-      alert(err.message);
+      const errorMsg = err.response?.data?.message || err.response?.data?.title || err.message || 'فشل عملية الحذف';
+      alert(errorMsg);
     } finally {
       setIsLoading(false);
     }
@@ -173,7 +126,6 @@ export default function SectorsPage() {
   const indexOfFirstRow = indexOfLastRow - rowsPerPage;
   const currentSectors = filteredSectors.slice(indexOfFirstRow, indexOfLastRow);
   const totalPages = Math.ceil(filteredSectors.length / rowsPerPage);
-
   return (
     <div style={styles.container}>
       {/* رأس الصفحة: زر الرجوع لشاشة التهيئة + العنوان وأزرار الإجراءات */}

@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-
-const API_URL = 'http://localhost:5210/api/state';
-const SECTORS_API_URL = 'http://localhost:5210/api/sector';
+import API from '../api'; // استيراد ملف الـ API المركزي
 
 export default function StatesPage() {
   const navigate = useNavigate(); 
@@ -24,37 +22,24 @@ export default function StatesPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [targetId, setTargetId] = useState(null);
 
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
-    return {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    };
-  };
-
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const headers = getAuthHeaders();
+      // جلب الولايات والقطاعات معاً بشكل متوازي باستخدام API المركزي
+      const [statesRes, sectorsRes] = await Promise.all([
+        API.get('/state'),
+        API.get('/sector').catch(() => ({ data: [] }))
+      ]);
       
-      // جلب الولايات
-      const statesRes = await fetch(API_URL, { headers });
-      if (statesRes.status === 401) throw new Error('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
-      if (!statesRes.ok) throw new Error('فشل في جلب بيانات الولايات');
-      
-      const statesData = await statesRes.json();
-      setStates(Array.isArray(statesData) ? statesData : []);
-
-      // جلب القطاعات للقائمة المنسدلة
-      const sectorsRes = await fetch(SECTORS_API_URL, { headers });
-      if (sectorsRes.ok) {
-        const sectorsData = await sectorsRes.json();
-        setSectors(Array.isArray(sectorsData) ? sectorsData : []);
-      }
-
+      setStates(Array.isArray(statesRes.data) ? statesRes.data : []);
+      setSectors(Array.isArray(sectorsRes.data) ? sectorsRes.data : []);
       setError('');
     } catch (err) {
-      setError(err.message);
+      if (err.response && err.response.status === 401) {
+        setError('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
+      } else {
+        setError(err.response?.data?.message || err.message || 'فشل في جلب البيانات');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -76,30 +61,16 @@ export default function StatesPage() {
         return;
       }
 
-      const method = isEditing ? 'PUT' : 'POST';
-      const url = isEditing ? `${API_URL}/${currentState.id}` : API_URL;
+      const payload = {
+        id: currentState.id || 0,
+        name: currentState.name,
+        sectorId: parseInt(currentState.sectorId, 10)
+      };
 
-      const response = await fetch(url, {
-        method: method,
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          id: currentState.id || 0,
-          name: currentState.name,
-          sectorId: parseInt(currentState.sectorId)
-        }),
-      });
-
-      if (response.status === 401) throw new Error('غير مصرح لك بالقيام بهذا الإجراء.');
-
-      if (!response.ok) {
-        let errorMsg = 'فشل حفظ البيانات';
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
-        } catch {
-          errorMsg = await response.text();
-        }
-        throw new Error(errorMsg);
+      if (isEditing) {
+        await API.put(`/state/${currentState.id}`, payload);
+      } else {
+        await API.post('/state', payload);
       }
 
       setShowModal(false);
@@ -107,15 +78,22 @@ export default function StatesPage() {
       setIsEditing(false);
       fetchData();
     } catch (err) {
-      alert(err.message);
+      let errorMsg = 'فشل حفظ البيانات';
+      if (err.response?.data?.errors) {
+        const firstErrorKey = Object.keys(err.response.data.errors)[0];
+        errorMsg = err.response.data.errors[firstErrorKey][0];
+      } else {
+        errorMsg = err.response?.data?.message || err.response?.data?.title || err.message || errorMsg;
+      }
+      alert(errorMsg);
     }
   };
 
   const handleOpenEdit = (stateItem) => {
     setCurrentState({ 
-      id: stateItem.id, 
-      name: stateItem.name, 
-      sectorId: stateItem.sectorId || (stateItem.sector ? stateItem.sector.id : '')
+      id: stateItem?.id || null, 
+      name: stateItem?.name || '', 
+      sectorId: stateItem?.sectorId || (stateItem?.sector ? stateItem.sector.id : '')
     });
     setIsEditing(true);
     setShowModal(true);
@@ -124,27 +102,11 @@ export default function StatesPage() {
   const confirmDelete = async () => {
     try {
       setIsLoading(true);
-      let response;
-      const headers = getAuthHeaders();
-      delete headers['Content-Type'];
 
       if (deleteTarget === 'single') {
-        response = await fetch(`${API_URL}/${targetId}`, { method: 'DELETE', headers });
+        await API.delete(`/state/${targetId}`);
       } else if (deleteTarget === 'all') {
-        response = await fetch(`${API_URL}/deleteAll`, { method: 'DELETE', headers });
-      }
-
-      if (response.status === 401) throw new Error('غير مصرح لك بالحذف.');
-
-      if (!response.ok) {
-        let errorMsg = 'فشل عملية الحذف';
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
-        } catch {
-          errorMsg = await response.text();
-        }
-        throw new Error(errorMsg);
+        await API.delete('/state/deleteAll');
       }
 
       setShowDeleteModal(false);
@@ -152,7 +114,8 @@ export default function StatesPage() {
       setTargetId(null);
       fetchData();
     } catch (err) {
-      alert(err.message);
+      const errorMsg = err.response?.data?.message || err.response?.data?.title || err.message || 'فشل عملية الحذف';
+      alert(errorMsg);
     } finally {
       setIsLoading(false);
     }
