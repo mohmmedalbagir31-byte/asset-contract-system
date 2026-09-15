@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import API from '../api'; // استيراد ملف الـ API المركزي
+
+const API_URL = 'http://localhost:5210/api/state';
+const SECTORS_API_URL = 'http://localhost:5210/api/sector';
 
 export default function StatesPage() {
   const navigate = useNavigate(); 
@@ -22,27 +24,37 @@ export default function StatesPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [targetId, setTargetId] = useState(null);
 
-  // تم حذف getAuthHeaders لأن ملف api.js يتولى الأمر تلقائياً
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('token');
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+  };
 
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      // جلب الولايات والقطاعات بالتوازي باستخدام API.get
-      const [statesRes, sectorsRes] = await Promise.all([
-        API.get('/state'),
-        API.get('/sector').catch(() => ({ data: [] })) // حماية في حال فشل جلب القطاعات
-      ]);
+      const headers = getAuthHeaders();
       
-      setStates(Array.isArray(statesRes.data) ? statesRes.data : []);
-      setSectors(Array.isArray(sectorsRes.data) ? sectorsRes.data : []);
+      // جلب الولايات
+      const statesRes = await fetch(API_URL, { headers });
+      if (statesRes.status === 401) throw new Error('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
+      if (!statesRes.ok) throw new Error('فشل في جلب بيانات الولايات');
       
+      const statesData = await statesRes.json();
+      setStates(Array.isArray(statesData) ? statesData : []);
+
+      // جلب القطاعات للقائمة المنسدلة
+      const sectorsRes = await fetch(SECTORS_API_URL, { headers });
+      if (sectorsRes.ok) {
+        const sectorsData = await sectorsRes.json();
+        setSectors(Array.isArray(sectorsData) ? sectorsData : []);
+      }
+
       setError('');
     } catch (err) {
-      if (err.response && err.response.status === 401) {
-        setError('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
-      } else {
-        setError(err.message || 'فشل في جلب البيانات');
-      }
+      setError(err.message);
     } finally {
       setIsLoading(false);
     }
@@ -64,17 +76,30 @@ export default function StatesPage() {
         return;
       }
 
-      const payload = {
-        id: currentState.id || 0,
-        name: currentState.name,
-        sectorId: parseInt(currentState.sectorId)
-      };
+      const method = isEditing ? 'PUT' : 'POST';
+      const url = isEditing ? `${API_URL}/${currentState.id}` : API_URL;
 
-      // استخدام الـ API المركزي بدلاً من fetch والـ URL المحلي
-      if (isEditing) {
-        await API.put(`/state/${currentState.id}`, payload);
-      } else {
-        await API.post('/state', payload);
+      const response = await fetch(url, {
+        method: method,
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          id: currentState.id || 0,
+          name: currentState.name,
+          sectorId: parseInt(currentState.sectorId)
+        }),
+      });
+
+      if (response.status === 401) throw new Error('غير مصرح لك بالقيام بهذا الإجراء.');
+
+      if (!response.ok) {
+        let errorMsg = 'فشل حفظ البيانات';
+        try {
+          const errorData = await response.json();
+          errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
+        } catch {
+          errorMsg = await response.text();
+        }
+        throw new Error(errorMsg);
       }
 
       setShowModal(false);
@@ -82,8 +107,7 @@ export default function StatesPage() {
       setIsEditing(false);
       fetchData();
     } catch (err) {
-      const errorMsg = err.response?.data?.message || err.response?.data?.title || err.message || 'فشل حفظ البيانات';
-      alert(errorMsg);
+      alert(err.message);
     }
   };
 
@@ -100,12 +124,27 @@ export default function StatesPage() {
   const confirmDelete = async () => {
     try {
       setIsLoading(true);
+      let response;
+      const headers = getAuthHeaders();
+      delete headers['Content-Type'];
 
-      // استخدام الـ API المركزي لعمليات الحذف (مفرد أو جماعي)
       if (deleteTarget === 'single') {
-        await API.delete(`/state/${targetId}`);
+        response = await fetch(`${API_URL}/${targetId}`, { method: 'DELETE', headers });
       } else if (deleteTarget === 'all') {
-        await API.delete('/state/deleteAll');
+        response = await fetch(`${API_URL}/deleteAll`, { method: 'DELETE', headers });
+      }
+
+      if (response.status === 401) throw new Error('غير مصرح لك بالحذف.');
+
+      if (!response.ok) {
+        let errorMsg = 'فشل عملية الحذف';
+        try {
+          const errorData = await response.json();
+          errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
+        } catch {
+          errorMsg = await response.text();
+        }
+        throw new Error(errorMsg);
       }
 
       setShowDeleteModal(false);
@@ -113,41 +152,7 @@ export default function StatesPage() {
       setTargetId(null);
       fetchData();
     } catch (err) {
-      const errorMsg = err.response?.data?.message || err.message || 'فشل عملية الحذف';
-      alert(errorMsg);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleOpenEdit = (stateItem) => {
-    setCurrentState({ 
-      id: stateItem.id, 
-      name: stateItem.name, 
-      sectorId: stateItem.sectorId || (stateItem.sector ? stateItem.sector.id : '')
-    });
-    setIsEditing(true);
-    setShowModal(true);
-  };
-
-  const confirmDelete = async () => {
-    try {
-      setIsLoading(true);
-
-      // استخدام الـ API المركزي المباشر لعمليات الحذف (مفرد أو جماعي)
-      if (deleteTarget === 'single') {
-        await API.delete(`/state/${targetId}`);
-      } else if (deleteTarget === 'all') {
-        await API.delete('/state/deleteAll');
-      }
-
-      setShowDeleteModal(false);
-      setDeleteTarget(null);
-      setTargetId(null);
-      fetchData();
-    } catch (err) {
-      const errorMsg = err.response?.data?.message || err.message || 'فشل عملية الحذف';
-      alert(errorMsg);
+      alert(err.message);
     } finally {
       setIsLoading(false);
     }
