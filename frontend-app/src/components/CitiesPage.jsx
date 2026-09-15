@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import API from '../api';
-const API_URL = 'http://localhost:5210/api/city';
-const response = await API.get('/state');
+import { useNavigate } from 'react-router-dom';
+import API from '../api'; // استيراد ملف الـ API المركزي
 
 export default function CitiesPage() {
   const navigate = useNavigate();
@@ -24,36 +22,24 @@ export default function CitiesPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [targetId, setTargetId] = useState(null);
 
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
-    return {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    };
-  };
-
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const headers = getAuthHeaders();
-      
-      // جلب المدن
-      const citiesRes = await fetch(API_URL, { headers });
-      if (citiesRes.status === 401) throw new Error('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
-      if (!citiesRes.ok) throw new Error('فشل في جلب بيانات المدن');
-      const citiesData = await citiesRes.json();
-      setCities(Array.isArray(citiesData) ? citiesData : []);
+      // جلب المدن والولايات معاً بشكل متوازي باستخدام API المركزي
+      const [citiesRes, statesRes] = await Promise.all([
+        API.get('/city'),
+        API.get('/state').catch(() => ({ data: [] }))
+      ]);
 
-      // جلب الولايات
-      const statesRes = await fetch(STATES_API_URL, { headers });
-      if (statesRes.ok) {
-        const statesData = await statesRes.json();
-        setStates(Array.isArray(statesData) ? statesData : []);
-      }
-
+      setCities(Array.isArray(citiesRes.data) ? citiesRes.data : []);
+      setStates(Array.isArray(statesRes.data) ? statesRes.data : []);
       setError('');
     } catch (err) {
-      setError(err.message || 'حدث خطأ غير معروف');
+      if (err.response && err.response.status === 401) {
+        setError('انتهت صلاحية الجلسة. يرجى تسجيل الدخول.');
+      } else {
+        setError(err.response?.data?.message || err.message || 'حدث خطأ غير معروف');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -80,30 +66,16 @@ export default function CitiesPage() {
         return;
       }
 
-      const method = isEditing ? 'PUT' : 'POST';
-      const url = isEditing ? `${API_URL}/${currentCity.id}` : API_URL;
+      const payload = {
+        id: currentCity.id || 0,
+        name: currentCity.name,
+        stateId: parseInt(currentCity.stateId, 10)
+      };
 
-      const response = await fetch(url, {
-        method: method,
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          id: currentCity.id || 0,
-          name: currentCity.name,
-          stateId: parseInt(currentCity.stateId, 10)
-        }),
-      });
-
-      if (response.status === 401) throw new Error('غير مصرح لك بالقيام بهذا الإجراء.');
-
-      if (!response.ok) {
-        let errorMsg = 'فشل حفظ البيانات';
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
-        } catch {
-          errorMsg = await response.text();
-        }
-        throw new Error(errorMsg);
+      if (isEditing) {
+        await API.put(`/city/${currentCity.id}`, payload);
+      } else {
+        await API.post('/city', payload);
       }
 
       setShowModal(false);
@@ -111,7 +83,14 @@ export default function CitiesPage() {
       setIsEditing(false);
       fetchData();
     } catch (err) {
-      alert(err.message);
+      let errorMsg = 'فشل حفظ البيانات';
+      if (err.response?.data?.errors) {
+        const firstErrorKey = Object.keys(err.response.data.errors)[0];
+        errorMsg = err.response.data.errors[firstErrorKey][0];
+      } else {
+        errorMsg = err.response?.data?.message || err.response?.data?.title || err.message || errorMsg;
+      }
+      alert(errorMsg);
     }
   };
 
@@ -128,27 +107,11 @@ export default function CitiesPage() {
   const confirmDelete = async () => {
     try {
       setIsLoading(true);
-      let response;
-      const headers = getAuthHeaders();
-      delete headers['Content-Type'];
 
       if (deleteTarget === 'single') {
-        response = await fetch(`${API_URL}/${targetId}`, { method: 'DELETE', headers });
+        await API.delete(`/city/${targetId}`);
       } else if (deleteTarget === 'all') {
-        response = await fetch(`${API_URL}/deleteAll`, { method: 'DELETE', headers });
-      }
-
-      if (response?.status === 401) throw new Error('غير مصرح لك بالحذف.');
-
-      if (!response || !response.ok) {
-        let errorMsg = 'فشل عملية الحذف';
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.message || errorData.title || JSON.stringify(errorData);
-        } catch {
-          errorMsg = await response.text();
-        }
-        throw new Error(errorMsg);
+        await API.delete('/city/deleteAll');
       }
 
       setShowDeleteModal(false);
@@ -156,7 +119,8 @@ export default function CitiesPage() {
       setTargetId(null);
       fetchData();
     } catch (err) {
-      alert(err.message);
+      const errorMsg = err.response?.data?.message || err.response?.data?.title || err.message || 'فشل عملية الحذف';
+      alert(errorMsg);
     } finally {
       setIsLoading(false);
     }
@@ -188,6 +152,8 @@ export default function CitiesPage() {
       return '-';
     }
   };
+
+  
 
   return (
     <div style={styles.container}>
