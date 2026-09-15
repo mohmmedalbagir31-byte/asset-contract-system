@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-
-const API_OWNER_URL = 'http://localhost:5210/api/owner';
-const API_PROPERTY_URL = 'http://localhost:5210/api/property';
-const API_CITIES_URL = 'http://localhost:5210/api/city';
+import API from '../api'; // استيراد ملف الـ API المركزي
 
 export default function OwnerDetailsPage() {
   const { id } = useParams();
@@ -36,26 +33,18 @@ export default function OwnerDetailsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(5);
 
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
-    return {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    };
-  };
-
   const fetchOwnerDetails = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_OWNER_URL}/${id}`, { headers: getAuthHeaders() });
-      if (res.status === 401) throw new Error('انتهت صلاحية الجلسة.');
-      if (!res.ok) throw new Error('فشل جلب بيانات المالك');
-      
-      const data = await res.json();
-      setOwner(data);
+      const res = await API.get(`/owner/${id}`);
+      setOwner(res.data);
       setError('');
     } catch (err) {
-      setError(err.message || 'حدث خطأ في جلب التفاصيل');
+      if (err.response && err.response.status === 401) {
+        setError('انتهت صلاحية الجلسة.');
+      } else {
+        setError(err.response?.data?.message || err.message || 'حدث خطأ في جلب التفاصيل');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -63,11 +52,8 @@ export default function OwnerDetailsPage() {
 
   const fetchCities = async () => {
     try {
-      const res = await fetch(API_CITIES_URL, { headers: getAuthHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        setCities(data);
-      }
+      const res = await API.get('/city');
+      setCities(Array.isArray(res.data) ? res.data : []);
     } catch (e) {
       console.log('خطأ في جلب المدن');
     }
@@ -106,8 +92,8 @@ export default function OwnerDetailsPage() {
         name: newProp.name,
         ownershipType: finalOwnershipType,
         details: newProp.details,
-        cityId: parseInt(newProp.cityId),
-        ownerId: parseInt(id),
+        cityId: parseInt(newProp.cityId, 10),
+        ownerId: parseInt(id, 10),
         units: unitsList
           .filter(u => u.unitNumber.trim() !== '')
           .map(u => ({
@@ -119,21 +105,15 @@ export default function OwnerDetailsPage() {
           }))
       };
 
-      const res = await fetch(API_PROPERTY_URL, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload)
-      });
-
-      const responseData = await res.json();
-      if (!res.ok) throw new Error(responseData.message || 'فشل حفظ العقار');
+      const res = await API.post('/property', payload);
 
       setIsModalOpen(false);
       setNewProp({ propertyCode: '', name: '', ownershipType: '', customOwnershipType: '', cityId: '', details: '' });
       setUnitsList([{ unitNumber: '', activityType: '', customActivityType: '', areaSize: '', status: 'متاحة', description: '' }]);
       fetchOwnerDetails();
     } catch (err) {
-      alert(err.message || 'حدث خطأ أثناء الحفظ');
+      const errorMsg = err.response?.data?.message || err.response?.data?.title || err.message || 'حدث خطأ أثناء الحفظ';
+      alert(errorMsg);
     } finally {
       setIsSubmitting(false);
     }
